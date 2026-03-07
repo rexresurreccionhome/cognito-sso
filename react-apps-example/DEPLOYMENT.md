@@ -1,0 +1,412 @@
+# Deployment Guide - Cognito SSO Project
+
+This guide walks you through deploying the complete Cognito SSO project to AWS using various deployment strategies.
+
+## 🎯 Deployment Overview
+
+This project consists of three components:
+1. **Main App** (React) → AWS Amplify
+2. **Admin Portal** (React) → AWS Amplify  
+3. **API Backend** (Node.js) → AWS Lambda or ECS
+
+## 🔧 Prerequisites
+
+- AWS Account with appropriate permissions
+- AWS CLI installed and configured
+- Node.js 16+ installed
+- Git repository (GitHub, GitLab, etc.)
+
+## 📋 Pre-Deployment Checklist
+
+- [ ] AWS Cognito User Pool created and configured
+- [ ] Environment variables documented
+- [ ] Applications tested locally
+- [ ] Code committed to Git repository
+- [ ] Domain names decided (optional)
+
+## 🚀 Step 1: Deploy Main App to Amplify
+
+### 1.1 Create Amplify App
+
+1. **Open AWS Amplify Console**
+   ```
+   AWS Console → Amplify → Host web app
+   ```
+
+2. **Connect Repository**
+   ```
+   Source code provider: GitHub
+   → Authorize AWS Amplify
+   → Select repository: your-cognito-sso-repo
+   → Branch: main
+   → App name: cognito-sso-main-app
+   ```
+
+3. **Configure Build Settings**
+   - Amplify will detect `amplify.yml` automatically
+   - Build command: `npm run build`
+   - Output directory: `build`
+
+### 1.2 Set Environment Variables
+
+In Amplify Console → App Settings → Environment Variables:
+
+```
+REACT_APP_COGNITO_AUTHORITY=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX
+REACT_APP_COGNITO_CLIENT_ID=your-client-id
+REACT_APP_COGNITO_DOMAIN=https://your-domain.auth.us-east-1.amazoncognito.com
+REACT_APP_API_BASE_URL=https://your-api-domain.com/api
+REACT_APP_MAIN_APP_URL=https://main.amplifyapp.com
+REACT_APP_ADMIN_APP_URL=https://admin.amplifyapp.com
+```
+
+### 1.3 Deploy
+
+```
+Review → Save and Deploy
+```
+
+### 1.4 Note the URL
+
+Save the generated URL: `https://main.d1234567890.amplifyapp.com`
+
+## 🚀 Step 2: Deploy Admin Portal to Amplify
+
+### 2.1 Create Second Amplify App
+
+Repeat the process for the admin portal:
+
+1. **Create New Amplify App**
+   ```
+   AWS Console → Amplify → Host web app
+   → Connect same repository
+   → Branch: main
+   → App name: cognito-sso-admin-portal
+   ```
+
+2. **Configure Build Settings**
+   - Point to `admin-portal` folder
+   - Build command: `npm run build`
+   - Output directory: `build`
+
+### 2.2 Set Environment Variables
+
+Same as main app, but update URLs:
+```
+REACT_APP_MAIN_APP_URL=https://main.d1234567890.amplifyapp.com
+REACT_APP_ADMIN_APP_URL=https://admin.d9876543210.amplifyapp.com
+REACT_APP_API_BASE_URL=https://your-api-domain.com/api
+```
+
+### 2.3 Note the URL
+
+Save: `https://admin.d9876543210.amplifyapp.com`
+
+## 🚀 Step 3: Deploy API Backend
+
+### Option A: AWS Lambda (Recommended)
+
+#### 3.1 Install Serverless Framework
+
+```bash
+npm install -g serverless
+cd api-backend
+npm install serverless-http serverless-offline
+```
+
+#### 3.2 Configure AWS Credentials
+
+```bash
+aws configure
+# Enter your AWS Access Key ID and Secret
+```
+
+#### 3.3 Set Environment Variables
+
+Create `api-backend/.env`:
+```env
+COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX
+COGNITO_REGION=us-east-1
+COGNITO_APP_CLIENT_ID=your-client-id
+ALLOWED_ORIGINS=https://main.d1234567890.amplifyapp.com,https://admin.d9876543210.amplifyapp.com
+```
+
+#### 3.4 Deploy to Lambda
+
+```bash
+cd api-backend
+serverless deploy --stage prod
+```
+
+#### 3.5 Note the API URL
+
+Save the API Gateway URL: `https://abc123.execute-api.us-east-1.amazonaws.com/prod`
+
+### Option B: AWS App Runner
+
+#### 3.1 Create App Runner Service
+
+```
+AWS Console → App Runner → Create service
+→ Source: Source code repository
+→ Connect to GitHub
+→ Repository: your-repo
+→ Branch: main
+→ Source directory: /api-backend
+```
+
+#### 3.2 Configure Build
+
+```yaml
+version: 1.0
+runtime: nodejs16
+build:
+  commands:
+    build:
+      - npm install
+      - npm prune --production
+run:
+  runtime-version: 16
+  command: npm start
+  network:
+    port: 3001
+    env-vars:
+      - COGNITO_USER_POOL_ID
+      - COGNITO_REGION
+      - COGNITO_APP_CLIENT_ID
+      - ALLOWED_ORIGINS
+```
+
+#### 3.3 Set Environment Variables
+
+Add in App Runner console:
+```
+COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX
+COGNITO_REGION=us-east-1
+COGNITO_APP_CLIENT_ID=your-client-id
+ALLOWED_ORIGINS=https://main.amplifyapp.com,https://admin.amplifyapp.com
+```
+
+## 🔧 Step 4: Update Cognito Configuration
+
+### 4.1 Update Callback URLs
+
+In AWS Cognito Console → User pools → App integration → App client:
+
+**Callback URLs:**
+```
+https://main.d1234567890.amplifyapp.com/
+https://admin.d9876543210.amplifyapp.com/
+```
+
+**Sign-out URLs:**
+```
+https://main.d1234567890.amplifyapp.com/
+https://admin.d9876543210.amplifyapp.com/
+```
+
+### 4.2 Update CORS Origins
+
+Update your API deployment with production URLs:
+```
+ALLOWED_ORIGINS=https://main.d1234567890.amplifyapp.com,https://admin.d9876543210.amplifyapp.com
+```
+
+## 🔧 Step 5: Update Application URLs
+
+### 5.1 Update Main App Environment Variables
+
+In Amplify Console for main app:
+```
+REACT_APP_API_BASE_URL=https://abc123.execute-api.us-east-1.amazonaws.com/prod/api
+REACT_APP_MAIN_APP_URL=https://main.d1234567890.amplifyapp.com
+REACT_APP_ADMIN_APP_URL=https://admin.d9876543210.amplifyapp.com
+```
+
+### 5.2 Update Admin Portal Environment Variables
+
+In Amplify Console for admin portal:
+```
+REACT_APP_API_BASE_URL=https://abc123.execute-api.us-east-1.amazonaws.com/prod/api
+REACT_APP_MAIN_APP_URL=https://main.d1234567890.amplifyapp.com
+REACT_APP_ADMIN_APP_URL=https://admin.d9876543210.amplifyapp.com
+```
+
+## 🧪 Step 6: Test Production Deployment
+
+### 6.1 Test Main App
+
+1. Visit: `https://main.d1234567890.amplifyapp.com`
+2. Click "Sign In with Cognito"
+3. Create account or sign in
+4. Verify user profile displays
+
+### 6.2 Test Admin Portal
+
+1. Visit: `https://admin.d9876543210.amplifyapp.com`
+2. Should auto-authenticate if signed in to main app
+3. If not admin, should see access denied
+
+### 6.3 Test API
+
+```bash
+# Test health endpoint
+curl https://abc123.execute-api.us-east-1.amazonaws.com/prod/api/health
+
+# Test with authentication (get token from app)
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+     https://abc123.execute-api.us-east-1.amazonaws.com/prod/api/protected/profile
+```
+
+## 🎨 Optional: Custom Domains
+
+### For Amplify Apps
+
+1. **Add Domain in Amplify Console**
+   ```
+   App Settings → Domain management → Add domain
+   → Enter your domain: app.yourdomain.com
+   → Configure DNS as instructed
+   ```
+
+### For API Gateway
+
+1. **Create Custom Domain**
+   ```
+   API Gateway Console → Custom domain names
+   → Create domain name
+   → Configure Route 53 or your DNS provider
+   ```
+
+## 📊 Monitoring and Logs
+
+### CloudWatch Logs
+
+- **Amplify**: Automatic build and access logs
+- **Lambda**: Function logs in CloudWatch
+- **App Runner**: Application logs available
+
+### Set Up Alarms
+
+```
+CloudWatch → Alarms → Create alarm
+→ Select metrics for your services
+→ Set thresholds for errors, latency, etc.
+```
+
+## 🔒 Production Security Checklist
+
+- [ ] **HTTPS Everywhere**: All endpoints use SSL
+- [ ] **Environment Variables**: No secrets in code
+- [ ] **CORS Properly Configured**: Only production domains allowed  
+- [ ] **Rate Limiting Active**: API has rate limits
+- [ ] **JWT Validation**: Tokens properly validated
+- [ ] **Error Handling**: No sensitive data in error messages
+- [ ] **Monitoring**: CloudWatch alarms configured
+- [ ] **Backup Strategy**: Data backup plan in place
+
+## 🔄 CI/CD Pipeline
+
+### Automatic Deployments
+
+Amplify automatically deploys when you push to your main branch. For API:
+
+#### Lambda with GitHub Actions
+
+Create `.github/workflows/deploy-api.yml`:
+```yaml
+name: Deploy API
+on:
+  push:
+    branches: [main]
+    paths: ['api-backend/**']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16'
+    - name: Install Serverless
+      run: npm install -g serverless
+    - name: Install dependencies
+      run: cd api-backend && npm install
+    - name: Deploy
+      run: cd api-backend && serverless deploy --stage prod
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+```
+
+## 🐛 Troubleshooting Deployment Issues
+
+### Common Issues
+
+#### 1. Build Failures
+
+```
+Error: Module not found
+```
+**Solution**: Check `package.json` dependencies and build paths
+
+#### 2. CORS Errors in Production
+
+```
+Access blocked by CORS policy
+```
+**Solution**: Update `ALLOWED_ORIGINS` with exact production URLs
+
+#### 3. Cognito Redirect Issues
+
+```
+Redirect URI mismatch
+```
+**Solution**: Update Cognito callback URLs with production domains
+
+#### 4. API Authentication Fails
+
+```
+Invalid token issuer
+```
+**Solution**: Verify `COGNITO_USER_POOL_ID` and `COGNITO_REGION`
+
+### Debug Steps
+
+1. **Check Environment Variables**: Verify all variables are set correctly
+2. **Check CloudWatch Logs**: Look for specific error messages
+3. **Test Endpoints**: Use curl to test API endpoints individually
+4. **Verify Cognito Settings**: Check callback URLs and app client configuration
+
+## 💰 Cost Optimization
+
+### Free Tier Usage
+
+- **Amplify**: 1000 build minutes, 15GB served per month
+- **Lambda**: 1M requests, 400,000 GB-seconds per month
+- **API Gateway**: 1M API calls per month
+- **Cognito**: 50,000 MAUs (Monthly Active Users)
+
+### Estimated Costs (Beyond Free Tier)
+
+- **Small Scale** (< 1,000 users): $10-30/month
+- **Medium Scale** (1,000-10,000 users): $50-150/month
+- **Large Scale** (10,000+ users): $150+/month
+
+## ✅ Deployment Complete!
+
+Your Cognito SSO application is now live in production! 
+
+**Final URLs:**
+- Main App: `https://main.d1234567890.amplifyapp.com`
+- Admin Portal: `https://admin.d9876543210.amplifyapp.com`  
+- API: `https://abc123.execute-api.us-east-1.amazonaws.com/prod`
+
+**Next Steps:**
+1. Set up monitoring and alerting
+2. Configure custom domains (optional)
+3. Implement proper backup strategies
+4. Monitor costs and usage
+5. Plan for scaling as needed

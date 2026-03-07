@@ -1,0 +1,55 @@
+# API deployment for AWS Lambda (using Serverless framework)
+service: cognito-sso-api
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  environment:
+    NODE_ENV: ${self:provider.stage}
+    COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID}
+    COGNITO_REGION: ${self:provider.region}
+    COGNITO_APP_CLIENT_ID: ${env:COGNITO_APP_CLIENT_ID}
+    ALLOWED_ORIGINS: ${env:ALLOWED_ORIGINS}
+  
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - cognito-idp:AdminGetUser
+        - cognito-idp:ListUsers
+      Resource: 
+        - arn:aws:cognito-idp:${self:provider.region}:*:userpool/${env:COGNITO_USER_POOL_ID}
+
+functions:
+  api:
+    handler: lambda.handler
+    events:
+      - http:
+          path: /{proxy+}
+          method: ANY
+          cors:
+            origin: ${env:ALLOWED_ORIGINS}
+            headers:
+              - Content-Type
+              - Authorization
+              - X-Requested-With
+            allowCredentials: true
+      - http:
+          path: /
+          method: ANY
+          cors:
+            origin: ${env:ALLOWED_ORIGINS}
+            headers:
+              - Content-Type
+              - Authorization
+              - X-Requested-With
+            allowCredentials: true
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 3001
+    host: 0.0.0.0
