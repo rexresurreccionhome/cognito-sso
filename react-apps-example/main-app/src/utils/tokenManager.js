@@ -124,12 +124,21 @@ class TokenManager {
    */
   static getAuthHeaders() {
     const tokens = this.getTokens();
-    if (!tokens?.accessToken) {
+    console.log('TokenManager - getting auth headers');
+    console.log('Tokens object:', tokens);
+    console.log('Token type:', tokens?.tokenType);
+    console.log('Access token:', tokens?.accessToken ? 'Present' : 'Missing');
+    
+    if (!tokens || !tokens.accessToken) {
+      console.log('No tokens available for auth headers');
       return {};
     }
 
+    const authHeader = `${tokens.tokenType || 'Bearer'} ${tokens.accessToken}`;
+    console.log('Generated auth header:', authHeader);
+    
     return {
-      'Authorization': `${tokens.tokenType} ${tokens.accessToken}`,
+      'Authorization': authHeader,
       'Content-Type': 'application/json'
     };
   }

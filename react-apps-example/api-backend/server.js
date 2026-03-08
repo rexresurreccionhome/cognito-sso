@@ -104,6 +104,35 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// Handle preflight requests explicitly
+app.options('*', (req, res) => {
+  const origin = req.get('Origin');
+  
+  if (allowedOrigins.indexOf(origin) !== -1 || origin?.includes('.amplifyapp.com')) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With');
+  res.header('Access-Control-Max-Age', '86400');
+  
+  res.status(200).end();
+});
+
+// Ensure all responses include CORS headers
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  
+  // Always set CORS headers for actual requests
+  if (origin && (allowedOrigins.indexOf(origin) !== -1 || origin.includes('.amplifyapp.com'))) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+  
+  next();
+});
+
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -193,32 +222,40 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-const server = app.listen(PORT, () => {
-  console.log('🚀 Cognito SSO API Server started');
-  console.log(`📍 Server running on port ${PORT}`);
+// Start server only if not in Lambda environment
+if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  const server = app.listen(PORT, () => {
+    console.log('🚀 Cognito SSO API Server started');
+    console.log(`📍 Server running on port ${PORT}`);
+    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`📚 Documentation: http://localhost:${PORT}/api/docs`);
+    console.log(`❤️  Health check: http://localhost:${PORT}/api/health`);
+    console.log(`🔐 User Pool ID: ${process.env.COGNITO_USER_POOL_ID || 'Not configured'}`);
+    console.log(`🌍 CORS origins: ${allowedOrigins.join(', ')}`);
+  });
+
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('📴 SIGTERM received. Shutting down gracefully...');
+    server.close(() => {
+      console.log('✅ Server closed');
+      process.exit(0);
+    });
+  });
+
+  process.on('SIGINT', () => {
+    console.log('📴 SIGINT received. Shutting down gracefully...');
+    server.close(() => {
+      console.log('✅ Server closed');
+      process.exit(0);
+    });
+  });
+} else {
+  // Lambda environment - just log startup info
+  console.log('🚀 Cognito SSO API Server (Lambda mode)');
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📚 Documentation: http://localhost:${PORT}/api/docs`);
-  console.log(`❤️  Health check: http://localhost:${PORT}/api/health`);
   console.log(`🔐 User Pool ID: ${process.env.COGNITO_USER_POOL_ID || 'Not configured'}`);
   console.log(`🌍 CORS origins: ${allowedOrigins.join(', ')}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('📴 SIGTERM received. Shutting down gracefully...');
-  server.close(() => {
-    console.log('✅ Server closed');
-    process.exit(0);
-  });
-});
-
-process.on('SIGINT', () => {
-  console.log('📴 SIGINT received. Shutting down gracefully...');
-  server.close(() => {
-    console.log('✅ Server closed');
-    process.exit(0);
-  });
-});
+}
 
 module.exports = app;

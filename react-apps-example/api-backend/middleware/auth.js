@@ -12,6 +12,11 @@ class JWTValidator {
     this.appClientId = process.env.COGNITO_APP_CLIENT_ID;
     this.jwksClient = null; // Will be initialized lazily
     
+    console.log('JWT Validator initialized with config:');
+    console.log('- User Pool ID:', this.userPoolId);
+    console.log('- Region:', this.region);
+    console.log('- App Client ID:', this.appClientId);
+    
     if (!this.userPoolId) {
       throw new Error('COGNITO_USER_POOL_ID environment variable is required');
     }
@@ -25,7 +30,10 @@ class JWTValidator {
         cache: true,
         cacheMaxAge: 86400000, // 24 hours
         cacheMaxEntries: 5,
-        timeout: 30000
+        timeout: 5000, // Reduced to 5 seconds for Lambda
+        rateLimit: true,
+        jwksRequestsPerMinute: 10,
+        jwksRequestsPerHour: 100
       });
       console.log(`JWT Validator initialized for User Pool: ${this.userPoolId}`);
     }
@@ -57,15 +65,22 @@ class JWTValidator {
    * Extract token from Authorization header
    */
   extractToken(authHeader) {
+    console.log('Auth header received:', authHeader);
+    
     if (!authHeader) {
+      console.log('No authorization header provided');
       return null;
     }
 
     const parts = authHeader.split(' ');
+    console.log('Auth header parts:', parts);
+    
     if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      console.log('Invalid auth header format. Expected "Bearer <token>", got:', parts);
       return null;
     }
 
+    console.log('Token extracted successfully, length:', parts[1].length);
     return parts[1];
   }
 
@@ -74,12 +89,29 @@ class JWTValidator {
    */
   async validateToken(token) {
     return new Promise((resolve, reject) => {
-      // Verify token signature and claims
+      console.log('JWT validation config:');
+      console.log('- Expected audience (appClientId):', this.appClientId);
+      console.log('- Expected issuer:', `https://cognito-idp.${this.region}.amazonaws.com/${this.userPoolId}`);
+      
+      // First decode the token without verification to see its claims
+      try {
+        const decoded = jwt.decode(token, { complete: true });
+        console.log('Token claims:', {
+          aud: decoded.payload.aud,
+          iss: decoded.payload.iss,
+          client_id: decoded.payload.client_id,
+          token_use: decoded.payload.token_use
+        });
+      } catch (decodeErr) {
+        console.error('Failed to decode token for debugging:', decodeErr.message);
+      }
+      
+      // Verify token signature and claims (AWS Cognito access tokens use client_id instead of aud)
       jwt.verify(
         token,
         this.getKey,
         {
-          audience: this.appClientId,
+          // Remove audience validation - AWS Cognito uses client_id claim instead
           issuer: `https://cognito-idp.${this.region}.amazonaws.com/${this.userPoolId}`,
           algorithms: ['RS256']
         },
@@ -88,6 +120,14 @@ class JWTValidator {
             console.error('Token validation error:', err.message);
             return reject(err);
           }
+          
+          // Manually validate client_id matches our expected app client ID
+          if (decoded.client_id !== this.appClientId) {
+            console.error('Client ID mismatch. Expected:', this.appClientId, 'Got:', decoded.client_id);
+            return reject(new Error('Invalid client ID'));
+          }
+          
+          console.log('Token validation successful for client_id:', decoded.client_id);
 
           // Additional validations
           const currentTime = Math.floor(Date.now() / 1000);
