@@ -31,7 +31,18 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('combined'));
 }
 
-// Rate limiting
+// Trust proxy settings - automatically detect serverless environments
+const isServerless = process.env.AWS_LAMBDA_FUNCTION_NAME || 
+                    process.env.VERCEL || 
+                    process.env.NETLIFY ||
+                    process.env.TRUST_PROXY === 'true';
+
+if (isServerless) {
+  app.set('trust proxy', 1);
+  console.log('Trust proxy enabled for serverless environment');
+}
+
+// Rate limiting with serverless-friendly configuration
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
@@ -42,25 +53,49 @@ const limiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting in serverless environments if needed (can be enabled via env var)
+  skip: process.env.DISABLE_RATE_LIMIT_IN_SERVERLESS === 'true' && isServerless ? () => true : undefined
 });
 
 app.use('/api', limiter);
 
-// CORS configuration
+// CORS configuration with flexible origin handling
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:3000', 'http://localhost:3001'];
+  : [
+      'http://localhost:3000', 
+      'http://localhost:3001', 
+      'http://localhost:3002'
+    ];
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (like mobile apps, curl, or Postman)
     if (!origin) return callback(null, true);
     
+    console.log('CORS: Checking origin:', origin);
+    
+    // Check exact matches first
     if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+      console.log('CORS: Origin allowed (exact match)');
+      return callback(null, true);
     }
+    
+    // Allow Amplify domains (*.amplifyapp.com)
+    if (origin.includes('.amplifyapp.com')) {
+      console.log('CORS: Origin allowed (Amplify domain)');
+      return callback(null, true);
+    }
+    
+    // Allow any localhost with different ports (for development)
+    if (origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
+      console.log('CORS: Origin allowed (localhost)');
+      return callback(null, true);
+    }
+    
+    console.log('CORS: Origin rejected:', origin);
+    console.log('CORS: Allowed origins:', allowedOrigins);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -72,11 +107,6 @@ app.use(cors(corsOptions));
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Trust proxy if behind reverse proxy (for production)
-if (process.env.TRUST_PROXY === 'true') {
-  app.set('trust proxy', 1);
-}
 
 // Routes
 

@@ -129,7 +129,17 @@ function App() {
   };
 
   const redirectToMainApp = () => {
-    window.location.href = `${appConfig.mainApp}?redirect=${encodeURIComponent(window.location.href)}`;
+    const currentUrl = window.location.href;
+    const mainAppUrl = appConfig.mainApp;
+    
+    console.log('Admin Portal: Redirecting to main app');
+    console.log('Admin Portal: Current URL:', currentUrl);
+    console.log('Admin Portal: Main app URL:', mainAppUrl);
+    
+    const redirectUrl = `${mainAppUrl}?redirect=${encodeURIComponent(currentUrl)}`;
+    console.log('Admin Portal: Full redirect URL:', redirectUrl);
+    
+    window.location.href = redirectUrl;
   };
 
   // Loading state

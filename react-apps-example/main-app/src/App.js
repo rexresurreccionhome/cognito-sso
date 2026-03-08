@@ -17,11 +17,18 @@ function App() {
     const urlParams = new URLSearchParams(window.location.search);
     const redirectUrl = urlParams.get('redirect');
     
+    console.log('Main App: Checking redirect parameter');
+    console.log('Main App: Redirect URL from params:', redirectUrl);
+    console.log('Main App: Is authenticated:', subdomainAuth.isAuthenticated);
+    
     if (redirectUrl && subdomainAuth.isAuthenticated) {
       // User is authenticated and we have a redirect URL
+      console.log('Main App: User authenticated, will redirect to:', decodeURIComponent(redirectUrl));
+      // Give user a moment to see the success message, then redirect
       setTimeout(() => {
+        console.log('Main App: Executing redirect now');
         window.location.href = decodeURIComponent(redirectUrl);
-      }, 2000);
+      }, 3000); // Increased delay to 3 seconds
     }
   }, [subdomainAuth.isAuthenticated]);
 
@@ -45,12 +52,22 @@ function App() {
     setApiResponse(null);
 
     try {
+      console.log('Main App: Making API call to:', `${apiConfig.baseUrl}/api/protected/profile`);
+      
       const response = await subdomainAuth.makeAuthenticatedRequest(
         `${apiConfig.baseUrl}/api/protected/profile`,
         {
           method: 'GET'
         }
       );
+
+      console.log('Main App: API response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log('Main App: API error response:', errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
 
       const data = await response.json();
       
@@ -60,9 +77,14 @@ function App() {
         data: data
       });
     } catch (error) {
+      console.error('Main App: API call error:', error);
       setApiResponse({
         success: false,
-        error: error.message
+        error: error.message,
+        details: {
+          name: error.name,
+          stack: error.stack
+        }
       });
     } finally {
       setApiLoading(false);
@@ -99,7 +121,7 @@ function App() {
     );
   }
 
-  // Check for redirect scenario
+  // Check for redirect scenario - only show redirect screen if user is authenticated
   const urlParams = new URLSearchParams(window.location.search);
   const redirectUrl = urlParams.get('redirect');
   
@@ -107,10 +129,13 @@ function App() {
     return (
       <div className="app fade-in">
         <div className="loading">
-          <h2>Redirecting...</h2>
-          <p>You're authenticated! Redirecting you back to:</p>
+          <h2>✅ Authentication Successful!</h2>
+          <p>Redirecting you back to:</p>
           <p><strong>{decodeURIComponent(redirectUrl)}</strong></p>
           <div className="loading-spinner"></div>
+          <p className="auth-note">
+            You will be redirected automatically in a few seconds...
+          </p>
         </div>
       </div>
     );
