@@ -14,6 +14,10 @@ applications:
             - echo "REACT_APP_COGNITO_AUTHORITY=$REACT_APP_COGNITO_AUTHORITY"
             - echo "REACT_APP_COGNITO_CLIENT_ID=$REACT_APP_COGNITO_CLIENT_ID"
             - echo "REACT_APP_COGNITO_DOMAIN=$REACT_APP_COGNITO_DOMAIN"
+            - echo "REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL"
+            - echo "REACT_APP_MAIN_APP_URL=$REACT_APP_MAIN_APP_URL"
+            - echo "REACT_APP_ADMIN_APP_URL=$REACT_APP_ADMIN_APP_URL"
+            - echo "REACT_APP_API_APP_URL=$REACT_APP_API_APP_URL"
             - npm run build
       artifacts:
         baseDirectory: build
@@ -37,6 +41,9 @@ applications:
             - echo "REACT_APP_COGNITO_CLIENT_ID=$REACT_APP_COGNITO_CLIENT_ID"
             - echo "REACT_APP_COGNITO_DOMAIN=$REACT_APP_COGNITO_DOMAIN"
             - echo "REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL"
+            - echo "REACT_APP_MAIN_APP_URL=$REACT_APP_MAIN_APP_URL"
+            - echo "REACT_APP_ADMIN_APP_URL=$REACT_APP_ADMIN_APP_URL"
+            - echo "REACT_APP_API_APP_URL=$REACT_APP_API_APP_URL"
             - npm run build
       artifacts:
         baseDirectory: build
