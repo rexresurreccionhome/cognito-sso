@@ -28,13 +28,12 @@ function App() {
   /**
    * Handle Cognito logout with proper redirect
    */
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    // Clear tokens and reset app state first
+    await subdomainAuth.signOut();
+    
+    // Then redirect to Cognito logout
     const logoutUrl = `${cognitoDomain}/logout?client_id=${cognitoConfig.client_id}&logout_uri=${encodeURIComponent(window.location.origin)}`;
-    
-    // Clear tokens first
-    subdomainAuth.clearTokens();
-    
-    // Redirect to Cognito logout
     window.location.href = logoutUrl;
   };
 

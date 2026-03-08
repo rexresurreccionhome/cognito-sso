@@ -102,90 +102,127 @@ REACT_APP_API_BASE_URL=https://your-api-domain.com/api
 
 Save: `https://admin.d9876543210.amplifyapp.com`
 
-## 🚀 Step 3: Deploy API Backend
+## 🚀 Step 3: Deploy API Backend to AWS Lambda
 
-### Option A: AWS Lambda (Recommended)
+### 3.1 Prepare Lambda Deployment Package
 
-#### 3.1 Install Serverless Framework
-
-```bash
-npm install -g serverless
-cd api-backend
-npm install serverless-http serverless-offline
-```
-
-#### 3.2 Configure AWS Credentials
+First, create the deployment package locally:
 
 ```bash
-aws configure
-# Enter your AWS Access Key ID and Secret
+# Navigate to API backend directory
+cd react-apps-example/api-backend
+
+# Install dependencies
+npm install
+
+# Create deployment zip file
+zip -r api-backend-lambda.zip . -x "*.git*" "*.DS_Store*" "node_modules/.cache/*"
 ```
 
-#### 3.3 Set Environment Variables
+### 3.2 Create Lambda Function in AWS Console
 
-Create `api-backend/.env`:
-```env
-COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX
-COGNITO_REGION=us-east-1
-COGNITO_APP_CLIENT_ID=your-client-id
-ALLOWED_ORIGINS=https://main.d1234567890.amplifyapp.com,https://admin.d9876543210.amplifyapp.com
-```
+1. **Open AWS Lambda Console**: https://console.aws.amazon.com/lambda/
+2. **Create Function**:
+   - Click **"Create function"**
+   - Choose **"Author from scratch"**
+   - **Function name**: `cognito-sso-api`
+   - **Runtime**: `Node.js 18.x` or `Node.js 20.x`
+   - **Architecture**: `x86_64`
+   - Click **"Create function"**
 
-#### 3.4 Deploy to Lambda
+### 3.3 Upload Code to Lambda
+
+1. **In the Lambda function page**:
+   - Go to **"Code"** tab
+   - Click **"Upload from"** → **".zip file"**
+   - Upload your `api-backend-lambda.zip` file
+   - Click **"Save"**
+
+2. **Configure Handler**:
+   - Go to **"Runtime settings"** → **"Edit"**
+   - **Handler**: `lambda.handler`
+   - Click **"Save"**
+
+### 3.4 Set Lambda Environment Variables
+
+1. **Configuration** tab → **Environment variables** → **Edit**
+2. **Add these variables**:
+   ```
+   NODE_ENV=production
+   COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX
+   COGNITO_REGION=us-east-1
+   COGNITO_APP_CLIENT_ID=your-client-id-here
+   ALLOWED_ORIGINS=https://main.d1234567890.amplifyapp.com,https://admin.d9876543210.amplifyapp.com
+   RATE_LIMIT_WINDOW_MS=900000
+   RATE_LIMIT_MAX_REQUESTS=100
+   ```
+3. Click **"Save"**
+
+### 3.5 Create Function URL (Simple Alternative to API Gateway)
+
+1. **In your Lambda function page**:
+   - Go to **"Configuration"** tab
+   - Click **"Function URL"** in the left sidebar
+   - Click **"Create function URL"**
+
+2. **Configure Function URL**:
+   - **Auth type**: `NONE` (we handle auth in our code)
+   - **Configure cross-origin resource sharing (CORS)**:
+     - Check **"Configure CORS"**
+     - **Allow-Origin**: `https://main.d1234567890.amplifyapp.com,https://admin.d9876543210.amplifyapp.com`
+     - **Allow-Headers**: `content-type,authorization`
+     - **Allow-Methods**: `GET,POST,PUT,DELETE,OPTIONS`
+     - **Max age**: `86400`
+   - Click **"Save"**
+
+3. **Copy Function URL**:
+   - Note the **Function URL**: `https://abc123-xyz789.lambda-url.us-east-1.on.aws/`
+   - This is your API base URL (much simpler than API Gateway!)
+
+### 3.6 Test Your Lambda Function URL
+
+Test the API endpoints directly:
 
 ```bash
-cd api-backend
-serverless deploy --stage prod
+# Test health endpoint
+curl https://abc123-xyz789.lambda-url.us-east-1.on.aws/api/health
+
+# Test API info
+curl https://abc123-xyz789.lambda-url.us-east-1.on.aws/api/info
+
+# Test protected endpoint (need JWT token from your frontend)
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+     https://abc123-xyz789.lambda-url.us-east-1.on.aws/api/protected/profile
 ```
 
-#### 3.5 Note the API URL
+### 3.7 Update Frontend Environment Variables
 
-Save the API Gateway URL: `https://abc123.execute-api.us-east-1.amazonaws.com/prod`
+Update your Amplify apps with the Lambda Function URL:
 
-### Option B: AWS App Runner
-
-#### 3.1 Create App Runner Service
-
+**Main App Environment Variables:**
 ```
-AWS Console → App Runner → Create service
-→ Source: Source code repository
-→ Connect to GitHub
-→ Repository: your-repo
-→ Branch: main
-→ Source directory: /api-backend
+REACT_APP_API_BASE_URL=https://abc123-xyz789.lambda-url.us-east-1.on.aws/api
 ```
 
-#### 3.2 Configure Build
-
-```yaml
-version: 1.0
-runtime: nodejs16
-build:
-  commands:
-    build:
-      - npm install
-      - npm prune --production
-run:
-  runtime-version: 16
-  command: npm start
-  network:
-    port: 3001
-    env-vars:
-      - COGNITO_USER_POOL_ID
-      - COGNITO_REGION
-      - COGNITO_APP_CLIENT_ID
-      - ALLOWED_ORIGINS
+**Admin Portal Environment Variables:**
+```  
+REACT_APP_API_BASE_URL=https://abc123-xyz789.lambda-url.us-east-1.on.aws/api
 ```
 
-#### 3.3 Set Environment Variables
+### 3.8 Benefits of Function URL vs API Gateway
 
-Add in App Runner console:
-```
-COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX
-COGNITO_REGION=us-east-1
-COGNITO_APP_CLIENT_ID=your-client-id
-ALLOWED_ORIGINS=https://main.amplifyapp.com,https://admin.amplifyapp.com
-```
+✅ **Simpler Setup**: No API Gateway configuration needed  
+✅ **Lower Cost**: No API Gateway charges (only Lambda costs)  
+✅ **Built-in CORS**: Easy CORS configuration  
+✅ **Direct Integration**: One less service to manage  
+✅ **Automatic Scaling**: Same Lambda scaling benefits
+
+### 3.9 Lambda Function Monitoring
+
+Monitor your function:
+- **CloudWatch Logs**: `/aws/lambda/cognito-sso-api`
+- **CloudWatch Metrics**: Invocations, Duration, Error rate
+- **Function URL Metrics**: Available in Lambda console
 
 ## 🔧 Step 4: Update Cognito Configuration
 

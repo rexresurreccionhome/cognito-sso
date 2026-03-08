@@ -1,5 +1,4 @@
 const jwt = require('jsonwebtoken');
-const jwksClient = require('jwks-client');
 
 /**
  * JWT Authentication Middleware
@@ -11,36 +10,47 @@ class JWTValidator {
     this.userPoolId = process.env.COGNITO_USER_POOL_ID;
     this.region = process.env.COGNITO_REGION || 'us-east-1';
     this.appClientId = process.env.COGNITO_APP_CLIENT_ID;
+    this.jwksClient = null; // Will be initialized lazily
     
     if (!this.userPoolId) {
       throw new Error('COGNITO_USER_POOL_ID environment variable is required');
     }
+  }
 
-    // JWKS client for getting public keys
-    this.jwksClient = jwksClient({
-      jwksUri: `https://cognito-idp.${this.region}.amazonaws.com/${this.userPoolId}/.well-known/jwks.json`,
-      cache: true,
-      cacheMaxAge: 86400000, // 24 hours
-      cacheMaxEntries: 5,
-      timeout: 30000
-    });
-
-    console.log(`JWT Validator initialized for User Pool: ${this.userPoolId}`);
+  async getJwksClient() {
+    if (!this.jwksClient) {
+      const jwksClientModule = await import('jwks-client');
+      this.jwksClient = jwksClientModule.default({
+        jwksUri: `https://cognito-idp.${this.region}.amazonaws.com/${this.userPoolId}/.well-known/jwks.json`,
+        cache: true,
+        cacheMaxAge: 86400000, // 24 hours
+        cacheMaxEntries: 5,
+        timeout: 30000
+      });
+      console.log(`JWT Validator initialized for User Pool: ${this.userPoolId}`);
+    }
+    return this.jwksClient;
   }
 
   /**
    * Get signing key for JWT verification
    */
-  getKey = (header, callback) => {
-    this.jwksClient.getSigningKey(header.kid, (err, key) => {
-      if (err) {
-        console.error('Error getting signing key:', err);
-        return callback(err);
-      }
-      
-      const signingKey = key.publicKey || key.rsaPublicKey;
-      callback(null, signingKey);
-    });
+  getKey = async (header, callback) => {
+    try {
+      const client = await this.getJwksClient();
+      client.getSigningKey(header.kid, (err, key) => {
+        if (err) {
+          console.error('Error getting signing key:', err);
+          return callback(err);
+        }
+        
+        const signingKey = key.publicKey || key.rsaPublicKey;
+        callback(null, signingKey);
+      });
+    } catch (error) {
+      console.error('Error in getKey:', error);
+      callback(error);
+    }
   };
 
   /**
