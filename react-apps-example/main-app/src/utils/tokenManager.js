@@ -6,7 +6,7 @@ class TokenManager {
   static STORAGE_KEY = 'cognitoTokens';
 
   /**
-   * Store tokens in session storage for cross-subdomain sharing
+   * Store tokens in local storage for cross-subdomain sharing
    * @param {Object} user - OIDC user object containing tokens
    * @returns {boolean} Success status
    */
@@ -18,11 +18,12 @@ class TokenManager {
         refreshToken: user.refresh_token,
         profile: user.profile,
         expiresAt: user.expires_at,
-        tokenType: user.token_type || 'Bearer'
+        tokenType: user.token_type || 'Bearer',
+        timestamp: Date.now()
       };
       
-      sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(tokens));
-      console.log('Tokens stored successfully');
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(tokens));
+      console.log('Tokens stored successfully in localStorage');
       return true;
     } catch (error) {
       console.error('Error storing tokens:', error);
@@ -31,12 +32,12 @@ class TokenManager {
   }
 
   /**
-   * Retrieve stored tokens from session storage
+   * Retrieve stored tokens from local storage
    * @returns {Object|null} Stored tokens or null
    */
   static getTokens() {
     try {
-      const tokens = sessionStorage.getItem(this.STORAGE_KEY);
+      const tokens = localStorage.getItem(this.STORAGE_KEY);
       return tokens ? JSON.parse(tokens) : null;
     } catch (error) {
       console.error('Error retrieving tokens:', error);
@@ -45,13 +46,13 @@ class TokenManager {
   }
 
   /**
-   * Clear stored tokens from session storage
+   * Clear stored tokens from local storage
    * @returns {boolean} Success status
    */
   static clearTokens() {
     try {
-      sessionStorage.removeItem(this.STORAGE_KEY);
-      console.log('Tokens cleared successfully');
+      localStorage.removeItem(this.STORAGE_KEY);
+      console.log('Tokens cleared successfully from localStorage');
       return true;
     } catch (error) {
       console.error('Error clearing tokens:', error);

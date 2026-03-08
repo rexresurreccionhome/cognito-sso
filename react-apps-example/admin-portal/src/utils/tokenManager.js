@@ -14,11 +14,12 @@ class TokenManager {
         refreshToken: user.refresh_token,
         profile: user.profile,
         expiresAt: user.expires_at,
-        tokenType: user.token_type || 'Bearer'
+        tokenType: user.token_type || 'Bearer',
+        timestamp: Date.now()
       };
       
-      sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(tokens));
-      console.log('Admin Portal: Tokens stored successfully');
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(tokens));
+      console.log('Admin Portal: Tokens stored successfully in localStorage');
       return true;
     } catch (error) {
       console.error('Admin Portal: Error storing tokens:', error);
@@ -28,7 +29,7 @@ class TokenManager {
 
   static getTokens() {
     try {
-      const tokens = sessionStorage.getItem(this.STORAGE_KEY);
+      const tokens = localStorage.getItem(this.STORAGE_KEY);
       return tokens ? JSON.parse(tokens) : null;
     } catch (error) {
       console.error('Admin Portal: Error retrieving tokens:', error);
@@ -38,8 +39,8 @@ class TokenManager {
 
   static clearTokens() {
     try {
-      sessionStorage.removeItem(this.STORAGE_KEY);
-      console.log('Admin Portal: Tokens cleared successfully');
+      localStorage.removeItem(this.STORAGE_KEY);
+      console.log('Admin Portal: Tokens cleared successfully from localStorage');
       return true;
     } catch (error) {
       console.error('Admin Portal: Error clearing tokens:', error);
