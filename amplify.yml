@@ -1,0 +1,4 @@
+version: 1
+applications:
+  - appRoot: react-apps-example/main-app
+  - appRoot: react-apps-example/admin-portal
