@@ -85,6 +85,12 @@ coverage
 ehthumbs.db
 Thumbs.db
 
+# Archive files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
 # Serverless directories
 .serverless/
 

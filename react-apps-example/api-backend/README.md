@@ -174,6 +174,34 @@ TRUST_PROXY=false               # Set true if behind load balancer
 ## 🚀 Deployment Options
 
 ### AWS Lambda (Serverless)
+
+#### Creating Deployment Package
+```bash
+# Clean install dependencies and create deployment package
+rm -rf node_modules package-lock.json
+npm install
+zip -r ../../api-backend-lambda-v$(date +%Y%m%d_%H%M%S).zip . -x "*.git*" "*.DS_Store*" "node_modules/.cache/*"
+```
+
+#### Deploy to Lambda
+```bash
+# Option 1: AWS Console Upload
+# Download the generated zip file and upload via AWS Lambda Console
+
+# Option 2: AWS CLI
+aws lambda update-function-code \
+  --function-name your-lambda-function-name \
+  --zip-file fileb://api-backend-lambda-v[TIMESTAMP].zip
+```
+
+#### Lambda Configuration
+- **Runtime**: Node.js 18.x or later
+- **Handler**: `index.handler`
+- **Environment Variables**: Set your Cognito configuration
+- **Timeout**: 30 seconds recommended
+- **Memory**: 256MB recommended
+
+### Serverless Framework
 ```bash
 npm install -g serverless
 npm install serverless-http serverless-offline
