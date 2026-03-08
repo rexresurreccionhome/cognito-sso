@@ -24,6 +24,11 @@ function App() {
     try {
       let userData = null;
 
+      // Debug: Log current domain and localStorage contents
+      console.log('Admin Portal: Current domain:', window.location.origin);
+      console.log('Admin Portal: All localStorage keys:', Object.keys(localStorage));
+      console.log('Admin Portal: TokenManager storage key:', TokenManager.getStorageKey());
+      
       // Check OIDC authentication first
       if (auth.isAuthenticated && auth.user) {
         console.log('Admin Portal: User authenticated via OIDC');
@@ -33,9 +38,17 @@ function App() {
         // Check stored tokens
         console.log('Admin Portal: Checking stored tokens...');
         const storedTokens = TokenManager.getTokens();
+        console.log('Admin Portal: Stored tokens found:', !!storedTokens);
+        console.log('Admin Portal: Token details:', storedTokens ? {
+          hasAccessToken: !!storedTokens.accessToken,
+          hasProfile: !!storedTokens.profile,
+          tokenLength: storedTokens.accessToken?.length || 0,
+          timestamp: storedTokens.timestamp
+        } : 'No tokens');
         
         if (storedTokens && storedTokens.accessToken) {
           const isValid = await TokenManager.validateToken(storedTokens.accessToken);
+          console.log('Admin Portal: Token validation result:', isValid);
           
           if (isValid) {
             console.log('Admin Portal: Valid stored tokens found');
@@ -44,6 +57,8 @@ function App() {
             console.log('Admin Portal: Stored tokens expired');
             TokenManager.clearTokens();
           }
+        } else {
+          console.log('Admin Portal: No valid tokens in storage');
         }
       }
 
@@ -54,6 +69,7 @@ function App() {
         // Check admin access
         const userProfile = userData.profile || userData;
         const userRole = userProfile?.['custom:role'] || userProfile?.role;
+        console.log('Admin Portal: User role:', userRole);
         const hasAdmin = adminConfig.requiredRoles.some(role => 
           role.toLowerCase() === userRole?.toLowerCase()
         );
@@ -64,6 +80,7 @@ function App() {
           console.log('Admin Portal: User does not have admin role:', userRole);
         }
       } else {
+        console.log('Admin Portal: No user data available');
         setIsAuthenticated(false);
         setHasAdminAccess(false);
       }

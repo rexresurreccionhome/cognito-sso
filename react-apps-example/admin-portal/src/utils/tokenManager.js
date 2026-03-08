@@ -6,6 +6,10 @@
 class TokenManager {
   static STORAGE_KEY = 'cognitoTokens';
 
+  static getStorageKey() {
+    return this.STORAGE_KEY;
+  }
+
   static storeTokens(user) {
     try {
       const tokens = {

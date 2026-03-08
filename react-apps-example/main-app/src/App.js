@@ -46,7 +46,7 @@ function App() {
 
     try {
       const response = await subdomainAuth.makeAuthenticatedRequest(
-        `${apiConfig.baseUrl}/protected/profile`,
+        `${apiConfig.baseUrl}/api/protected/profile`,
         {
           method: 'GET'
         }
