@@ -6,7 +6,7 @@ applications:
         preBuild:
           commands:
             - echo "Installing dependencies for Main App..."
-            - npm ci
+            - npm install
         build:
           commands:
             - echo "Building Main App..."
@@ -28,7 +28,7 @@ applications:
         preBuild:
           commands:
             - echo "Installing dependencies for Admin Portal..."
-            - npm ci
+            - npm install
         build:
           commands:
             - echo "Building Admin Portal..."
