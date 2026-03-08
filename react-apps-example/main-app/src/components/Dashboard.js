@@ -2,6 +2,23 @@ import React from 'react';
 import { appConfig } from '../config';
 
 const Dashboard = ({ user, userTokens, onTestApi, apiResponse, apiLoading }) => {
+  // Create admin portal URL with tokens for cross-domain SSO
+  const createAdminPortalUrl = () => {
+    const adminBaseUrl = appConfig.adminApp;
+    
+    if (userTokens?.access_token && userTokens?.id_token) {
+      const params = new URLSearchParams();
+      params.set('access_token', userTokens.access_token);
+      params.set('id_token', userTokens.id_token);
+      if (userTokens.profile) {
+        params.set('profile', encodeURIComponent(JSON.stringify(userTokens.profile)));
+      }
+      return `${adminBaseUrl}?${params.toString()}`;
+    }
+    
+    return adminBaseUrl;
+  };
+
   return (
     <>
       {/* Welcome Section */}
@@ -52,7 +69,7 @@ const Dashboard = ({ user, userTokens, onTestApi, apiResponse, apiLoading }) => 
         
         <div className="app-links">
           <a 
-            href={appConfig.adminApp} 
+            href={createAdminPortalUrl()} 
             target="_blank" 
             rel="noopener noreferrer" 
             className="app-link"

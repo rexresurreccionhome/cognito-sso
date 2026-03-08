@@ -14,7 +14,36 @@ function App() {
   const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    checkAuthenticationStatus();
+    // Check for tokens passed via URL parameters (cross-domain SSO)
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenFromUrl = urlParams.get('access_token');
+    const idTokenFromUrl = urlParams.get('id_token');
+    const profileFromUrl = urlParams.get('profile');
+    
+    if (tokenFromUrl && idTokenFromUrl) {
+      console.log('Admin Portal: Tokens received via URL parameters');
+      try {
+        const tokenData = {
+          accessToken: tokenFromUrl,
+          idToken: idTokenFromUrl,
+          profile: profileFromUrl ? JSON.parse(decodeURIComponent(profileFromUrl)) : null,
+          timestamp: Date.now()
+        };
+        
+        TokenManager.storeTokens(tokenData);
+        
+        // Clean up URL parameters
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        
+        // Force re-check authentication
+        setTimeout(checkAuthenticationStatus, 100);
+      } catch (error) {
+        console.error('Admin Portal: Error processing URL tokens:', error);
+      }
+    } else {
+      checkAuthenticationStatus();
+    }
   }, [auth.isAuthenticated, auth.user]);
 
   const checkAuthenticationStatus = async () => {

@@ -12,15 +12,32 @@ class TokenManager {
 
   static storeTokens(user) {
     try {
-      const tokens = {
-        accessToken: user.access_token,
-        idToken: user.id_token,
-        refreshToken: user.refresh_token,
-        profile: user.profile,
-        expiresAt: user.expires_at,
-        tokenType: user.token_type || 'Bearer',
-        timestamp: Date.now()
-      };
+      let tokens;
+      
+      // Handle both OIDC user object and direct token object
+      if (user.access_token) {
+        // OIDC user object
+        tokens = {
+          accessToken: user.access_token,
+          idToken: user.id_token,
+          refreshToken: user.refresh_token,
+          profile: user.profile,
+          expiresAt: user.expires_at,
+          tokenType: user.token_type || 'Bearer',
+          timestamp: Date.now()
+        };
+      } else {
+        // Direct token object (from URL parameters)
+        tokens = {
+          accessToken: user.accessToken,
+          idToken: user.idToken,
+          refreshToken: user.refreshToken,
+          profile: user.profile,
+          expiresAt: user.expiresAt,
+          tokenType: user.tokenType || 'Bearer',
+          timestamp: user.timestamp || Date.now()
+        };
+      }
       
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(tokens));
       console.log('Admin Portal: Tokens stored successfully in localStorage');
