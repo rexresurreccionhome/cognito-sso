@@ -19,5 +19,5 @@ export const apiConfig = {
 export const appConfig = {
   mainApp: process.env.REACT_APP_MAIN_APP_URL || "https://app.domain.com",
   adminApp: process.env.REACT_APP_ADMIN_APP_URL || "https://admin.domain.com",
-  apiApp: process.env.REACT_APP_API_APP_URL || "https://api.domain.com",
+  apiApp: process.env.REACT_APP_API_BASE_URL || "https://api.domain.com",
 };
