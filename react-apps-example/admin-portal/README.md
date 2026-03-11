@@ -168,6 +168,11 @@ REACT_APP_COGNITO_DOMAIN=https://your-domain.auth.us-east-1.amazoncognito.com
 REACT_APP_API_BASE_URL=http://localhost:3001/api  # Points to shared API
 REACT_APP_MAIN_APP_URL=http://localhost:3000      # Link back to main
 REACT_APP_ADMIN_APP_URL=http://localhost:3001     # This app's URL
+
+# Feature Flags (Phase 2 — keep in sync with main app)
+REACT_APP_USE_EXTERNAL_IDP=false
+REACT_APP_ENABLE_MFA=false
+REACT_APP_ENABLE_SOCIAL_LOGIN=false
 ```
 
 ## 🏗 Technical Architecture
@@ -175,9 +180,14 @@ REACT_APP_ADMIN_APP_URL=http://localhost:3001     # This app's URL
 ### **Key Components:**
 
 **`App.js`** - Role-based application controller
-- Validates admin permissions on load
-- Handles SSO token inheritance
-- Manages access denied scenarios
+- Primary auth check via `tokenManagerInstance` (AWS Amplify)
+- Legacy fallback: reads tokens from `TokenManager.getTokens()` (sessionStorage/localStorage) for cross-subdomain SSO
+- Renders `AuthSelection` when unauthenticated
+- Validates `custom:role` attribute for admin access
+
+**`components/AuthSelection.js`** - Authentication method selector (Phase 2)
+- Same as main-app but with admin-specific labels
+- Conditionally shows "Enterprise SSO" option when `REACT_APP_USE_EXTERNAL_IDP=true`
 
 **`components/AdminDashboard.js`** - Administrative interface
 - System metrics and statistics
@@ -190,15 +200,16 @@ REACT_APP_ADMIN_APP_URL=http://localhost:3001     # This app's URL
 - Links to other ecosystem apps
 - Admin-specific styling and branding
 
-**`utils/tokenManager.js`** - Shared authentication utility
-- Same token manager as Main App
-- Enables cross-domain SSO
-- Role detection and validation
+**`utils/tokenManager.js`** - Token management (Amplify + legacy)
+- **Instance methods** (`tokenManagerInstance`): Amplify Auth-based sign-in, session, and sign-out
+- **Static methods** (`TokenManager.getTokens()`, `validateToken()`, etc.): Legacy cross-subdomain token storage — preserved for SSO token inheritance from main app
 
 ### **POC Success Validation:**
 - ✅ Regular users cannot access admin features
-- ✅ Admin users get seamless SSO experience
+- ✅ Admin users get seamless SSO experience (Amplify session or legacy token fallback)
 - ✅ Role-based UI shows different content
 - ✅ Admin API endpoints work with proper tokens
 - ✅ Navigation between apps is seamless
 - ✅ Session management works across domains
+- ✅ *(Phase 2)* `REACT_APP_USE_EXTERNAL_IDP=true` shows Enterprise SSO option in `AuthSelection`
+- ✅ *(Phase 2)* Auth0-federated users with `custom:role=admin` can access the admin portal

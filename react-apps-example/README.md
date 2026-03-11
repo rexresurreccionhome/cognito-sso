@@ -17,6 +17,8 @@ This POC demonstrates the following real-world scenarios:
 - ✅ **Role-Based Access Control**: Different permissions based on user roles
 - ✅ **JWT Token Validation**: Secure API access with proper token verification
 - ✅ **Production-Ready Architecture**: Scalable design suitable for real enterprises
+- ✅ **External IDP Integration (Phase 2)**: Feature-flagged Auth0 SSO via Cognito federation
+- ✅ **AWS Amplify Auth**: Amplify-based token management with legacy fallback support
 
 ## 🏗️ POC Architecture Overview
 
@@ -123,21 +125,21 @@ This POC demonstrates the following real-world scenarios:
 react-apps-example/
 ├── main-app/                   # 🏠 MAIN APPLICATION
 │   ├── src/
-│   │   ├── components/         # Dashboard, Navigation
-│   │   ├── hooks/             # useSubdomainAuth (SSO magic)
-│   │   ├── utils/             # tokenManager (cross-app sharing)
-│   │   ├── config.js          # Cognito & app URLs
-│   │   └── App.js             # Authentication flow
-│   ├── package.json           # React + OIDC dependencies
+│   │   ├── components/         # Dashboard, Navigation, AuthSelection
+│   │   ├── hooks/             # useSubdomainAuth (legacy, preserved for reference)
+│   │   ├── utils/             # tokenManager (Amplify instance + legacy static)
+│   │   ├── config.js          # Cognito, feature flags & app URLs
+│   │   └── App.js             # Auth flow — AWS Amplify + AuthSelection
+│   ├── package.json           # React + aws-amplify dependencies
 │   └── amplify.yml            # AWS Amplify deployment
 │
 ├── admin-portal/              # 🔧 ADMIN APPLICATION
 │   ├── src/
-│   │   ├── components/        # AdminDashboard, UserTable
-│   │   ├── utils/            # tokenManager (shared with main)
-│   │   ├── config.js         # Same Cognito, admin-specific URLs
-│   │   └── App.js            # Role validation + admin UI
-│   ├── package.json          # React + OIDC dependencies
+│   │   ├── components/        # AdminDashboard, Navigation, AuthSelection
+│   │   ├── utils/            # tokenManager (Amplify instance + legacy static)
+│   │   ├── config.js         # Same Cognito, admin-specific config & feature flags
+│   │   └── App.js            # Role validation — tokenManagerInstance + legacy fallback
+│   ├── package.json          # React + aws-amplify dependencies
 │   └── amplify.yml           # Separate Amplify deployment
 │
 ├── api-backend/              # 🚀 SHARED API SERVICES
@@ -243,6 +245,11 @@ REACT_APP_COGNITO_DOMAIN=https://cognito-sso-demo-xyz.auth.us-east-1.amazoncogni
 REACT_APP_API_BASE_URL=http://localhost:3001/api
 REACT_APP_MAIN_APP_URL=http://localhost:3000
 REACT_APP_ADMIN_APP_URL=http://localhost:3001
+
+# Feature Flags (Phase 2)
+REACT_APP_USE_EXTERNAL_IDP=false
+REACT_APP_ENABLE_MFA=false
+REACT_APP_ENABLE_SOCIAL_LOGIN=false
 ```
 
 #### Admin Portal Configuration
@@ -255,6 +262,11 @@ REACT_APP_COGNITO_DOMAIN=https://cognito-sso-demo-xyz.auth.us-east-1.amazoncogni
 REACT_APP_API_BASE_URL=http://localhost:3001/api
 REACT_APP_MAIN_APP_URL=http://localhost:3000
 REACT_APP_ADMIN_APP_URL=http://localhost:3001
+
+# Feature Flags (Phase 2 — keep in sync with main app)
+REACT_APP_USE_EXTERNAL_IDP=false
+REACT_APP_ENABLE_MFA=false
+REACT_APP_ENABLE_SOCIAL_LOGIN=false
 ```
 
 #### API Backend Configuration
@@ -467,6 +479,9 @@ To test admin functionality, you need to set the `custom:role` attribute:
 - `REACT_APP_API_BASE_URL` - API backend URL
 - `REACT_APP_MAIN_APP_URL` - Main app URL
 - `REACT_APP_ADMIN_APP_URL` - Admin app URL
+- `REACT_APP_USE_EXTERNAL_IDP` - `true` to enable Auth0 SSO option (Phase 2, default: `false`)
+- `REACT_APP_ENABLE_MFA` - `true` to enable MFA flow (Phase 2, default: `false`)
+- `REACT_APP_ENABLE_SOCIAL_LOGIN` - `true` to enable social login (Phase 2, default: `false`)
 
 #### API Backend
 - `COGNITO_USER_POOL_ID` - User Pool ID
@@ -538,8 +553,8 @@ curl -H "Authorization: Bearer ADMIN_TOKEN" http://localhost:3001/api/admin/stat
 
 ### ✅ Implemented Features
 
-- [x] **Native Cognito Authentication** - OAuth 2.0 + OpenID Connect
-- [x] **Cross-Subdomain SSO** - Token sharing via sessionStorage
+- [x] **Native Cognito Authentication** - OAuth 2.0 + OpenID Connect via AWS Amplify
+- [x] **Cross-Subdomain SSO** - Token sharing via Amplify session + legacy sessionStorage fallback
 - [x] **Role-Based Access Control** - Admin vs regular user permissions
 - [x] **JWT Token Validation** - Secure API authentication
 - [x] **Responsive UI** - Mobile-friendly design
@@ -549,6 +564,9 @@ curl -H "Authorization: Bearer ADMIN_TOKEN" http://localhost:3001/api/admin/stat
 - [x] **Error Handling** - Comprehensive error management
 - [x] **Security Headers** - CORS, rate limiting, helmet.js
 - [x] **Production Ready** - Amplify deployment configuration
+- [x] **AuthSelection Component** - UI for selecting between native Cognito and External IDP (Phase 2)
+- [x] **External IDP Feature Flag** - `REACT_APP_USE_EXTERNAL_IDP` gates Auth0 SSO option (Phase 2)
+- [x] **AWS Amplify Auth Integration** - `tokenManagerInstance` wraps Amplify Auth for both sign-in methods
 
 ### 🚀 Production Considerations
 
@@ -567,9 +585,10 @@ For production deployment, consider:
 
 - [AWS Cognito Documentation](https://docs.aws.amazon.com/cognito/)
 - [AWS Amplify Hosting](https://docs.aws.amazon.com/amplify/)
+- [AWS Amplify Auth (aws-amplify)](https://docs.amplify.aws/lib/auth/getting-started/q/platform/js/)
 - [OpenID Connect Specification](https://openid.net/connect/)
 - [JWT Token Validation](https://jwt.io/)
-- [React OIDC Context](https://github.com/authts/react-oidc-context)
+- [Auth0 Cognito Federation Guide](https://auth0.com/docs/authenticate/identity-providers/enterprise-identity-providers/saml-identity-provider/aws-cognito)
 
 ## 🤝 Contributing
 

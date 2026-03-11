@@ -147,6 +147,11 @@ REACT_APP_API_BASE_URL=http://localhost:3001/api
 # Cross-App Navigation
 REACT_APP_MAIN_APP_URL=http://localhost:3000
 REACT_APP_ADMIN_APP_URL=http://localhost:3001
+
+# Feature Flags (Phase 2 — set to true to enable Auth0 SSO option)
+REACT_APP_USE_EXTERNAL_IDP=false
+REACT_APP_ENABLE_MFA=false
+REACT_APP_ENABLE_SOCIAL_LOGIN=false
 ```
 
 ## 🚀 Production Deployment
@@ -162,9 +167,14 @@ REACT_APP_ADMIN_APP_URL=http://localhost:3001
 ### **Key Components**
 
 **`App.js`** - Main application orchestrator
-- Handles authentication state management
-- Manages cross-app redirects
-- Integrates all POC scenarios
+- Manages authentication state via `tokenManagerInstance` (AWS Amplify)
+- Renders `AuthSelection` when unauthenticated
+- Handles sign-out and session refresh
+
+**`components/AuthSelection.js`** - Authentication method selector (Phase 2)
+- Renders native Cognito sign-in button always
+- Conditionally renders "Sign In with SSO" button when `REACT_APP_USE_EXTERNAL_IDP=true`
+- Calls `tokenManagerInstance.signIn(method)` to initiate the chosen flow
 
 **`components/Dashboard.js`** - User experience showcase
 - Displays personalized user information
@@ -176,28 +186,28 @@ REACT_APP_ADMIN_APP_URL=http://localhost:3001
 - Shows user context and role
 - Provides sign-out functionality
 
-**`hooks/useSubdomainAuth.js`** - Authentication orchestration
-- OIDC authentication with AWS Cognito
-- Token validation and refresh handling
-- API request authentication
-- Session state management
+**`hooks/useSubdomainAuth.js`** - Legacy authentication hook *(preserved for reference)*
+- Original OIDC implementation using `react-oidc-context`
+- No longer used as the primary auth orchestrator in `App.js`
+- Retained for reference and backward compatibility
 
-**`utils/tokenManager.js`** - Token storage (domain-specific)
-- JWT token storage in localStorage (within current domain only)
-- Token validation and expiration checking
-- Authentication state persistence
-- Token cleanup on sign-out
+**`utils/tokenManager.js`** - Token management (Amplify + legacy)
+- **Instance methods** (`tokenManagerInstance`): Amplify Auth-based sign-in, session, and sign-out
+- **`signIn(method)`**: Routes to native Cognito (`Auth.federatedSignIn()`) or External IDP (`Auth.federatedSignIn({ provider: 'Auth0' })`)
+- **Static methods** (`TokenManager.getTokens()`, `validateToken()`, etc.): Legacy cross-subdomain token storage in sessionStorage/localStorage — preserved for backward compatibility
 
-**Cross-Domain Flow (Dashboard.js):**
-- `createAdminPortalUrl()` - Constructs redirect URL with tokens
-- URL parameters carry tokens across domain boundaries
-- Target domain parses URL and stores tokens locally
+**`config.js`** - Central configuration
+- `cognitoConfig` with `external_idp` block (enabled by feature flag)
+- `featureFlags` driven by `REACT_APP_USE_EXTERNAL_IDP` env var
+- `authMethods` constants: `NATIVE_COGNITO` and `EXTERNAL_IDP`
 
 ### **POC Success Criteria**
-- ✅ User can sign up/in via Cognito
+- ✅ User can sign up/in via Cognito (native flow)
 - ✅ Profile information displays correctly  
 - ✅ Cross-domain navigation to Admin Portal works
 - ✅ API calls authenticate properly with JWT tokens
-- ✅ Tokens are shared across different domains via URL parameters
-- ✅ Sessions persist across browser restarts using localStorage
-- ✅ Sign-out clears all authentication across domains
+- ✅ Amplify session shared for cross-app SSO
+- ✅ Legacy token fallback (sessionStorage/localStorage) for cross-subdomain compatibility
+- ✅ Sign-out clears all authentication
+- ✅ *(Phase 2)* `REACT_APP_USE_EXTERNAL_IDP=true` shows External IDP option in `AuthSelection`
+- ✅ *(Phase 2)* Auth0 SSO redirects through Cognito federation and returns valid JWT tokens

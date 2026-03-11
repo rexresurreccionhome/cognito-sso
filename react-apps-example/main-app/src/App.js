@@ -1,16 +1,51 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from 'react-oidc-context';
 import { Routes, Route } from 'react-router-dom';
 import { cognitoDomain, cognitoConfig, appConfig, apiConfig } from './config';
-import useSubdomainAuth from './hooks/useSubdomainAuth';
+import { tokenManagerInstance } from './utils/tokenManager';
 import Dashboard from './components/Dashboard';
 import Navigation from './components/Navigation';
+import AuthSelection from './components/AuthSelection';
 
 function App() {
-  const auth = useAuth();
-  const subdomainAuth = useSubdomainAuth();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [apiResponse, setApiResponse] = useState(null);
   const [apiLoading, setApiLoading] = useState(false);
+
+  // Initialize authentication state
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        setLoading(true);
+        const authenticated = await tokenManagerInstance.isAuthenticated();
+        
+        if (authenticated) {
+          const currentUser = await tokenManagerInstance.getCurrentUser();
+          const tokens = await tokenManagerInstance.getCurrentSession();
+          
+          setIsAuthenticated(true);
+          setUser(currentUser);
+          
+          console.log('Main App: User authenticated:', currentUser);
+          console.log('Main App: Tokens available:', !!tokens);
+        } else {
+          setIsAuthenticated(false);
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Main App: Auth check error:', error);
+        setError(error.message);
+        setIsAuthenticated(false);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuthStatus();
+  }, []);
 
   // Handle redirect parameter for cross-domain navigation
   useEffect(() => {
@@ -19,9 +54,9 @@ function App() {
     
     console.log('Main App: Checking redirect parameter');
     console.log('Main App: Redirect URL from params:', redirectUrl);
-    console.log('Main App: Is authenticated:', subdomainAuth.isAuthenticated);
+    console.log('Main App: Is authenticated:', isAuthenticated);
     
-    if (redirectUrl && subdomainAuth.isAuthenticated) {
+    if (redirectUrl && isAuthenticated) {
       // User is authenticated and we have a redirect URL
       console.log('Main App: User authenticated, will redirect to:', decodeURIComponent(redirectUrl));
       // Give user a moment to see the success message, then redirect
@@ -30,18 +65,28 @@ function App() {
         window.location.href = decodeURIComponent(redirectUrl);
       }, 3000); // Increased delay to 3 seconds
     }
-  }, [subdomainAuth.isAuthenticated]);
+  }, [isAuthenticated]);
 
   /**
    * Handle Cognito logout with proper redirect
    */
   const handleSignOut = async () => {
-    // Clear tokens and reset app state first
-    await subdomainAuth.signOut();
-    
-    // Then redirect to Cognito logout
-    const logoutUrl = `${cognitoDomain}/logout?client_id=${cognitoConfig.client_id}&logout_uri=${encodeURIComponent(window.location.origin)}`;
-    window.location.href = logoutUrl;
+    try {
+      // Clear tokens and reset app state first
+      await tokenManagerInstance.signOut();
+      
+      // Update local state
+      setIsAuthenticated(false);
+      setUser(null);
+      setApiResponse(null);
+      
+      // Then redirect to Cognito logout
+      const logoutUrl = `${cognitoDomain}/logout?client_id=${cognitoConfig.client_id}&logout_uri=${encodeURIComponent(window.location.origin)}`;
+      window.location.href = logoutUrl;
+    } catch (error) {
+      console.error('Main App: Sign out error:', error);
+      setError(error.message);
+    }
   };
 
   /**
@@ -54,12 +99,19 @@ function App() {
     try {
       console.log('Main App: Making API call to:', `${apiConfig.baseUrl}/api/protected/profile`);
       
-      const response = await subdomainAuth.makeAuthenticatedRequest(
-        `${apiConfig.baseUrl}/api/protected/profile`,
-        {
-          method: 'GET'
+      // Get current tokens
+      const tokens = await tokenManagerInstance.getCurrentSession();
+      if (!tokens?.accessToken) {
+        throw new Error('No access token available');
+      }
+      
+      const response = await fetch(`${apiConfig.baseUrl}/api/protected/profile`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${tokens.accessToken}`,
+          'Content-Type': 'application/json'
         }
-      );
+      });
 
       console.log('Main App: API response status:', response.status);
       
@@ -92,7 +144,7 @@ function App() {
   };
 
   // Loading state
-  if (auth.isLoading || subdomainAuth.loading) {
+  if (loading) {
     return (
       <div className="app fade-in">
         <div className="loading">
@@ -105,12 +157,12 @@ function App() {
   }
 
   // Error state
-  if (auth.error) {
+  if (error) {
     return (
       <div className="app fade-in">
         <div className="error">
           <h2>Authentication Error</h2>
-          <p>{auth.error.message}</p>
+          <p>{error}</p>
           <div className="button-group">
             <button onClick={() => window.location.reload()} className="btn btn-primary">
               Retry
@@ -125,7 +177,7 @@ function App() {
   const urlParams = new URLSearchParams(window.location.search);
   const redirectUrl = urlParams.get('redirect');
   
-  if (redirectUrl && subdomainAuth.isAuthenticated) {
+  if (redirectUrl && isAuthenticated) {
     return (
       <div className="app fade-in">
         <div className="loading">
@@ -142,34 +194,28 @@ function App() {
   }
 
   // Authenticated state
-  if (subdomainAuth.isAuthenticated) {
-    const userInfo = subdomainAuth.getUserInfo();
-
+  if (isAuthenticated && user) {
     return (
       <div className="app fade-in">
         <header className="app-header">
-          <h1>🎉 Cognito SSO Main App</h1>
-          <p>Successfully authenticated with AWS Cognito!</p>
+          <Navigation 
+            user={user}
+            onSignOut={handleSignOut}
+          />
         </header>
-
-        <Navigation 
-          user={userInfo}
-          onSignOut={handleSignOut}
-        />
-
-        <Routes>
-          <Route path="/" element={
-            <main className="app-main">
+        
+        <main className="app-main">
+          <Routes>
+            <Route path="/" element={
               <Dashboard 
-                user={userInfo}
-                userTokens={subdomainAuth.user}
+                user={user}
                 onTestApi={testApiCall}
                 apiResponse={apiResponse}
                 apiLoading={apiLoading}
               />
-            </main>
-          } />
-        </Routes>
+            } />
+          </Routes>
+        </main>
       </div>
     );
   }
@@ -183,43 +229,29 @@ function App() {
       </header>
       
       <main className="app-main">
-        <div className="auth-actions">
-          <h2>Welcome to Cognito SSO Demo</h2>
-          <p>This application demonstrates AWS Cognito authentication with cross-subdomain SSO capabilities.</p>
-          
-          <div className="button-group">
-            <button 
-              onClick={() => subdomainAuth.signIn()} 
-              className="btn btn-primary"
-              disabled={subdomainAuth.loading}
-            >
-              {subdomainAuth.loading ? 'Signing In...' : 'Sign In with Cognito'}
-            </button>
-          </div>
-          
-          <p className="auth-note">
-            You'll be redirected to AWS Cognito for secure authentication.
-            After signing in, you'll be able to access other applications in this domain without re-authenticating.
-          </p>
-
-          <div className="cross-domain-section">
-            <h3>What you'll be able to access after signing in:</h3>
-            <div className="app-links">
-              <div className="app-link">
-                <h4>Main Application</h4>
-                <p>This main app with user dashboard and profile information</p>
-              </div>
-              <div className="app-link">
-                <h4>Admin Portal</h4>
-                <p>Administrative interface (requires admin role)</p>
-              </div>
-              <div className="app-link">
-                <h4>Protected API</h4>
-                <p>REST API endpoints that validate your JWT tokens</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <AuthSelection 
+          onAuthMethodSelect={async (method) => {
+            console.log('Main App: Authentication method selected:', method);
+            // The authentication will be handled by the AuthSelection component
+            // We just need to refresh our auth state after successful auth
+            setTimeout(async () => {
+              try {
+                const authenticated = await tokenManagerInstance.isAuthenticated();
+                if (authenticated) {
+                  const currentUser = await tokenManagerInstance.getCurrentUser();
+                  setIsAuthenticated(true);
+                  setUser(currentUser);
+                }
+              } catch (error) {
+                console.error('Main App: Post-auth check error:', error);
+              }
+            }, 1000);
+          }}
+          onError={(error) => {
+            console.error('Main App: Authentication error:', error);
+            setError(error.message || 'Authentication failed');
+          }}
+        />
       </main>
     </div>
   );

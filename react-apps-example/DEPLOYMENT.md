@@ -15,6 +15,7 @@ This project consists of three components:
 - AWS CLI installed and configured
 - Node.js 16+ installed
 - Git repository (GitHub, GitLab, etc.)
+- Auth0 account *(required only for Phase 2 External IDP feature — skip if using native Cognito only)*
 
 ## 📋 Pre-Deployment Checklist
 
@@ -23,6 +24,9 @@ This project consists of three components:
 - [ ] Applications tested locally
 - [ ] Code committed to Git repository
 - [ ] Domain names decided (optional)
+- [ ] *(Phase 2)* Auth0 tenant created and Cognito SAML/OIDC connection configured
+- [ ] *(Phase 2)* Auth0 registered as Identity Provider in Cognito User Pool
+- [ ] Feature flag `REACT_APP_USE_EXTERNAL_IDP` decision made (default: `false`)
 
 ## 🚀 Step 1: Deploy Main App to Amplify
 
@@ -52,13 +56,23 @@ This project consists of three components:
 In Amplify Console → App Settings → Environment Variables:
 
 ```
+# Cognito Configuration
 REACT_APP_COGNITO_AUTHORITY=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX
 REACT_APP_COGNITO_CLIENT_ID=your-client-id
 REACT_APP_COGNITO_DOMAIN=https://your-domain.auth.us-east-1.amazoncognito.com
+
+# API & App URLs
 REACT_APP_API_BASE_URL=https://your-api-domain.com/api
 REACT_APP_MAIN_APP_URL=https://main.amplifyapp.com
 REACT_APP_ADMIN_APP_URL=https://admin.amplifyapp.com
+
+# Feature Flags (Phase 2 — set to true to enable Auth0 External IDP)
+REACT_APP_USE_EXTERNAL_IDP=false
+REACT_APP_ENABLE_MFA=false
+REACT_APP_ENABLE_SOCIAL_LOGIN=false
 ```
+
+> **Phase 2 Note:** Set `REACT_APP_USE_EXTERNAL_IDP=true` in the Amplify Console to enable the Auth0 SSO option in the UI. Requires Auth0 to be configured as an Identity Provider in your Cognito User Pool first (see Step 4.3).
 
 ### 1.3 Deploy
 
@@ -91,11 +105,23 @@ Repeat the process for the admin portal:
 
 ### 2.2 Set Environment Variables
 
-Same as main app, but update URLs:
+In Amplify Console → App Settings → Environment Variables:
+
 ```
+# Cognito Configuration (same User Pool as main app)
+REACT_APP_COGNITO_AUTHORITY=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX
+REACT_APP_COGNITO_CLIENT_ID=your-client-id
+REACT_APP_COGNITO_DOMAIN=https://your-domain.auth.us-east-1.amazoncognito.com
+
+# API & App URLs (use actual Amplify-generated URLs)
+REACT_APP_API_BASE_URL=https://your-api-domain.com/api
 REACT_APP_MAIN_APP_URL=https://main.d1234567890.amplifyapp.com
 REACT_APP_ADMIN_APP_URL=https://admin.d9876543210.amplifyapp.com
-REACT_APP_API_BASE_URL=https://your-api-domain.com/api
+
+# Feature Flags (Phase 2 — must match main app setting)
+REACT_APP_USE_EXTERNAL_IDP=false
+REACT_APP_ENABLE_MFA=false
+REACT_APP_ENABLE_SOCIAL_LOGIN=false
 ```
 
 ### 2.3 Note the URL
@@ -249,6 +275,43 @@ Update your API deployment with production URLs:
 ALLOWED_ORIGINS=https://main.d1234567890.amplifyapp.com,https://admin.d9876543210.amplifyapp.com
 ```
 
+### 4.3 (Phase 2) Configure Auth0 as External Identity Provider
+
+Skip this step if you are not enabling `REACT_APP_USE_EXTERNAL_IDP`.
+
+1. **Create Auth0 Application**
+   ```
+   Auth0 Dashboard → Applications → Create Application
+   → Type: Regular Web Application
+   → Allowed Callback URLs: https://your-cognito-domain.auth.us-east-1.amazoncognito.com/oauth2/idpresponse
+   → Allowed Logout URLs: https://main.d1234567890.amplifyapp.com/
+   ```
+
+2. **Add Auth0 as OIDC Identity Provider in Cognito**
+   ```
+   Cognito Console → User pools → Your pool
+   → Sign-in experience → Federated identity provider sign-in
+   → Add an identity provider → OpenID Connect
+   → Provider name: Auth0  ← must match identity_provider in config.js
+   → Client ID: <Auth0 app client ID>
+   → Client secret: <Auth0 app client secret>
+   → Issuer URL: https://<your-auth0-domain>.us.auth0.com
+   → Attribute mapping: email → email, name → name
+   ```
+
+3. **Enable Auth0 in App Client**
+   ```
+   Cognito → User pools → App clients → Your app client
+   → Edit Hosted UI → Identity providers: check Auth0
+   ```
+
+4. **Set Feature Flag in Amplify**
+   ```
+   Amplify Console → App Settings → Environment Variables
+   → Set REACT_APP_USE_EXTERNAL_IDP=true for both apps
+   → Redeploy both apps
+   ```
+
 ## 🔧 Step 5: Update Application URLs
 
 ### 5.1 Update Main App Environment Variables
@@ -274,15 +337,18 @@ REACT_APP_ADMIN_APP_URL=https://admin.d9876543210.amplifyapp.com
 ### 6.1 Test Main App
 
 1. Visit: `https://main.d1234567890.amplifyapp.com`
-2. Click "Sign In with Cognito"
-3. Create account or sign in
-4. Verify user profile displays
+2. You will see the **AuthSelection** screen with available sign-in options
+3. Click **"Sign In with Cognito"** (native flow) or **"Sign In with SSO"** *(if `REACT_APP_USE_EXTERNAL_IDP=true`)*
+4. Complete authentication in the Cognito Hosted UI
+5. Verify user profile and dashboard display correctly
 
 ### 6.2 Test Admin Portal
 
 1. Visit: `https://admin.d9876543210.amplifyapp.com`
-2. Should auto-authenticate if signed in to main app
-3. If not admin, should see access denied
+2. If already authenticated via main app, Amplify session will be detected automatically (SSO)
+3. If not authenticated, the **AuthSelection** screen is shown — sign in using the same method as main app
+4. Users without `custom:role = admin` will see **Access Denied**
+5. Admin users will see the full admin dashboard
 
 ### 6.3 Test API
 
@@ -341,6 +407,8 @@ CloudWatch → Alarms → Create alarm
 - [ ] **Error Handling**: No sensitive data in error messages
 - [ ] **Monitoring**: CloudWatch alarms configured
 - [ ] **Backup Strategy**: Data backup plan in place
+- [ ] *(Phase 2)* **External IDP Configured**: Auth0 callback URLs use production Cognito domain
+- [ ] *(Phase 2)* **Feature Flag Consistent**: `REACT_APP_USE_EXTERNAL_IDP` matches the same value in both Amplify apps
 
 ## 🔄 CI/CD Pipeline
 
@@ -409,6 +477,20 @@ Redirect URI mismatch
 Invalid token issuer
 ```
 **Solution**: Verify `COGNITO_USER_POOL_ID` and `COGNITO_REGION`
+
+#### 5. SSO / External IDP Option Not Appearing
+
+```
+AuthSelection only shows native Cognito option
+```
+**Solution**: Verify `REACT_APP_USE_EXTERNAL_IDP=true` is set in Amplify Console environment variables and the app has been redeployed. Auth0 must also be configured as an Identity Provider in Cognito (Step 4.3).
+
+#### 6. Auth0 Redirect Fails
+
+```
+Error: identity provider not found
+```
+**Solution**: Confirm the `identity_provider` value in `config.js` (`Auth0`) exactly matches the **Provider name** set in Cognito Federated Identity Provider settings.
 
 ### Debug Steps
 

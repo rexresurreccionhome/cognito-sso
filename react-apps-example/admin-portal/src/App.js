@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from 'react-oidc-context';
 import { cognitoDomain, cognitoConfig, appConfig, adminConfig } from './config';
-import TokenManager from './utils/tokenManager';
+import TokenManager, { tokenManagerInstance } from './utils/tokenManager';
 import AdminDashboard from './components/AdminDashboard';
 import Navigation from './components/Navigation';
+import AuthSelection from './components/AuthSelection';
 
 function App() {
-  const auth = useAuth();
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasAdminAccess, setHasAdminAccess] = useState(false);
@@ -14,104 +13,64 @@ function App() {
   const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    // Check for tokens passed via URL parameters (cross-domain SSO)
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get('access_token');
-    const idTokenFromUrl = urlParams.get('id_token');
-    const profileFromUrl = urlParams.get('profile');
-    
-    if (tokenFromUrl && idTokenFromUrl) {
-      console.log('Admin Portal: Tokens received via URL parameters');
-      try {
-        const tokenData = {
-          accessToken: tokenFromUrl,
-          idToken: idTokenFromUrl,
-          profile: profileFromUrl ? JSON.parse(decodeURIComponent(profileFromUrl)) : null,
-          timestamp: Date.now()
-        };
-        
-        TokenManager.storeTokens(tokenData);
-        
-        // Clean up URL parameters
-        const cleanUrl = window.location.origin + window.location.pathname;
-        window.history.replaceState({}, document.title, cleanUrl);
-        
-        // Force re-check authentication
-        setTimeout(checkAuthenticationStatus, 100);
-      } catch (error) {
-        console.error('Admin Portal: Error processing URL tokens:', error);
-      }
-    } else {
-      checkAuthenticationStatus();
-    }
-  }, [auth.isAuthenticated, auth.user]);
+    checkAuthenticationStatus();
+  }, []);
 
   const checkAuthenticationStatus = async () => {
     setLoading(true);
     setAuthError(null);
 
     try {
-      let userData = null;
-
-      // Debug: Log current domain and localStorage contents
       console.log('Admin Portal: Current domain:', window.location.origin);
-      console.log('Admin Portal: All localStorage keys:', Object.keys(localStorage));
-      console.log('Admin Portal: TokenManager storage key:', TokenManager.getStorageKey());
-      
-      // Check OIDC authentication first
-      if (auth.isAuthenticated && auth.user) {
-        console.log('Admin Portal: User authenticated via OIDC');
-        userData = auth.user;
-        TokenManager.storeTokens(auth.user);
-      } else {
-        // Check stored tokens
-        console.log('Admin Portal: Checking stored tokens...');
-        const storedTokens = TokenManager.getTokens();
-        console.log('Admin Portal: Stored tokens found:', !!storedTokens);
-        console.log('Admin Portal: Token details:', storedTokens ? {
-          hasAccessToken: !!storedTokens.accessToken,
-          hasProfile: !!storedTokens.profile,
-          tokenLength: storedTokens.accessToken?.length || 0,
-          timestamp: storedTokens.timestamp
-        } : 'No tokens');
-        
-        if (storedTokens && storedTokens.accessToken) {
-          const isValid = await TokenManager.validateToken(storedTokens.accessToken);
-          console.log('Admin Portal: Token validation result:', isValid);
-          
-          if (isValid) {
-            console.log('Admin Portal: Valid stored tokens found');
-            userData = storedTokens;
-          } else {
-            console.log('Admin Portal: Stored tokens expired');
-            TokenManager.clearTokens();
-          }
-        } else {
-          console.log('Admin Portal: No valid tokens in storage');
-        }
-      }
 
-      if (userData) {
-        setUser(userData);
+      const authenticated = await tokenManagerInstance.isAuthenticated();
+      console.log('Admin Portal: Is authenticated:', authenticated);
+
+      if (authenticated) {
+        const currentUser = await tokenManagerInstance.getCurrentUser();
+        await tokenManagerInstance.getCurrentSession();
+
+        console.log('Admin Portal: User:', currentUser);
+
+        setUser(currentUser);
         setIsAuthenticated(true);
 
-        // Check admin access
-        const userProfile = userData.profile || userData;
-        const userRole = userProfile?.['custom:role'] || userProfile?.role;
+        // Check admin access via Cognito custom:role attribute
+        const userRole = currentUser?.attributes?.['custom:role'] || currentUser?.attributes?.role;
         console.log('Admin Portal: User role:', userRole);
-        const hasAdmin = adminConfig.requiredRoles.some(role => 
+
+        const hasAdmin = adminConfig.requiredRoles.some(role =>
           role.toLowerCase() === userRole?.toLowerCase()
         );
-        
         setHasAdminAccess(hasAdmin);
-        
+
         if (!hasAdmin) {
           console.log('Admin Portal: User does not have admin role:', userRole);
         }
       } else {
-        console.log('Admin Portal: No user data available');
-        setIsAuthenticated(false);
-        setHasAdminAccess(false);
+        // Fallback: check legacy stored tokens for cross-subdomain SSO
+        const storedTokens = TokenManager.getTokens();
+        if (storedTokens?.accessToken) {
+          const isValid = await TokenManager.validateToken(storedTokens.accessToken);
+          if (isValid) {
+            console.log('Admin Portal: Valid legacy stored tokens found');
+            const userProfile = storedTokens.profile || storedTokens;
+            const userRole = userProfile?.['custom:role'] || userProfile?.role;
+            const hasAdmin = adminConfig.requiredRoles.some(role =>
+              role.toLowerCase() === userRole?.toLowerCase()
+            );
+            setUser(userProfile);
+            setIsAuthenticated(true);
+            setHasAdminAccess(hasAdmin);
+          } else {
+            TokenManager.clearTokens();
+            setIsAuthenticated(false);
+            setHasAdminAccess(false);
+          }
+        } else {
+          setIsAuthenticated(false);
+          setHasAdminAccess(false);
+        }
       }
     } catch (error) {
       console.error('Admin Portal: Authentication check error:', error);
@@ -121,10 +80,14 @@ function App() {
     }
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    try {
+      await tokenManagerInstance.signOut();
+    } catch (error) {
+      // Fallback: clear tokens manually
+      TokenManager.clearTokens();
+    }
     const logoutUrl = `${cognitoDomain}/logout?client_id=${cognitoConfig.client_id}&logout_uri=${encodeURIComponent(window.location.origin)}`;
-    
-    TokenManager.clearTokens();
     window.location.href = logoutUrl;
   };
 
@@ -156,12 +119,12 @@ function App() {
   }
 
   // Error state
-  if (authError || auth.error) {
+  if (authError) {
     return (
       <div className="app fade-in">
         <div className="error">
           <h2>Authentication Error</h2>
-          <p>{authError || auth.error?.message}</p>
+          <p>{authError}</p>
           <div className="button-group">
             <button onClick={redirectToMainApp} className="btn btn-primary">
               Go to Main App
@@ -179,26 +142,23 @@ function App() {
   if (!isAuthenticated) {
     return (
       <div className="app fade-in">
-        <header className="admin-header">
-          <h1>🔧 Admin Portal</h1>
-          <p>Administrative Access Required</p>
-        </header>
-        
         <main className="app-main">
-          <div className="unauthorized">
-            <h2>Authentication Required</h2>
-            <p>You need to be signed in to access the admin portal.</p>
-            
-            <div className="button-group">
-              <button onClick={redirectToMainApp} className="btn btn-primary">
-                Sign In via Main App
-              </button>
-            </div>
-            
-            <p className="auth-note">
-              You'll be redirected to the main application for authentication, then brought back here automatically.
-            </p>
-          </div>
+          <AuthSelection
+            onAuthMethodSelect={async (method) => {
+              console.log('Admin Portal: Authentication method selected:', method);
+              setTimeout(async () => {
+                try {
+                  await checkAuthenticationStatus();
+                } catch (error) {
+                  console.error('Admin Portal: Post-auth check error:', error);
+                }
+              }, 1000);
+            }}
+            onError={(error) => {
+              console.error('Admin Portal: Authentication error:', error);
+              setAuthError(error.message || 'Authentication failed');
+            }}
+          />
         </main>
       </div>
     );
