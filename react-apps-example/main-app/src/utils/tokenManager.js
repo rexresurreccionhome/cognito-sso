@@ -1,27 +1,203 @@
+import { Auth } from 'aws-amplify';
+import { cognitoConfig, featureFlags, authMethods } from '../config';
+
 /**
- * Token Manager Utility
- * Handles cross-subdomain token storage and validation
+ * Enhanced Token Manager Utility
+ * Handles authentication for both native Cognito and external IDPs
  */
 class TokenManager {
   static STORAGE_KEY = 'cognitoTokens';
+  static TOKEN_DATA_KEY = 'cognitoTokenData';
+  static AUTH_METHOD_KEY = 'preferredAuthMethod';
 
-  /**
-   * Store tokens in local storage for cross-subdomain sharing
-   * @param {Object} user - OIDC user object containing tokens
-   * @returns {boolean} Success status
-   */
-  static storeTokens(user) {
+  constructor() {
+    this.tokens = null;
+    this.authMethod = null;
+    this.init();
+  }
+
+  init() {
+    // Configure Amplify Auth
+    Auth.configure({
+      Auth: {
+        region: this.extractRegionFromAuthority(cognitoConfig.authority),
+        userPoolId: this.extractUserPoolIdFromAuthority(cognitoConfig.authority),
+        userPoolWebClientId: cognitoConfig.client_id,
+        oauth: {
+          domain: cognitoConfig.cognitoDomain?.replace('https://', ''),
+          scope: cognitoConfig.scope.split(' '),
+          redirectSignIn: cognitoConfig.redirect_uri,
+          redirectSignOut: cognitoConfig.post_logout_redirect_uri,
+          responseType: cognitoConfig.response_type,
+        }
+      }
+    });
+  }
+
+  // Determine authentication method based on feature flags and user preference
+  getAuthMethod() {
+    if (!featureFlags.USE_EXTERNAL_IDP) {
+      return authMethods.NATIVE_COGNITO;
+    }
+    
+    // Check user preference from localStorage
+    const userPreference = localStorage.getItem(TokenManager.AUTH_METHOD_KEY);
+    return userPreference || authMethods.NATIVE_COGNITO;
+  }
+
+  // Set user's preferred authentication method
+  setAuthMethod(method) {
+    this.authMethod = method;
+    localStorage.setItem(TokenManager.AUTH_METHOD_KEY, method);
+  }
+
+  // Enhanced sign in with method selection
+  async signIn(method = null) {
     try {
+      const selectedMethod = method || this.getAuthMethod();
+      this.setAuthMethod(selectedMethod);
+
+      if (selectedMethod === authMethods.EXTERNAL_IDP && featureFlags.USE_EXTERNAL_IDP) {
+        // Use external IDP (Auth0) through Cognito federation
+        return await this.signInWithExternalIDP();
+      } else {
+        // Use native Cognito authentication
+        return await this.signInWithCognito();
+      }
+    } catch (error) {
+      console.error('Sign in error:', error);
+      throw error;
+    }
+  }
+
+  // Native Cognito sign in
+  async signInWithCognito() {
+    try {
+      return await Auth.federatedSignIn();
+    } catch (error) {
+      console.error('Native Cognito sign in error:', error);
+      throw error;
+    }
+  }
+
+  // External IDP (Auth0) sign in through Cognito
+  async signInWithExternalIDP() {
+    try {
+      return await Auth.federatedSignIn({
+        provider: cognitoConfig.external_idp.identity_provider
+      });
+    } catch (error) {
+      console.error('External IDP sign in error:', error);
+      throw error;
+    }
+  }
+
+  // Get current authentication session
+  async getCurrentSession() {
+    try {
+      const session = await Auth.currentSession();
       const tokens = {
-        accessToken: user.access_token,
-        idToken: user.id_token,
-        refreshToken: user.refresh_token,
-        profile: user.profile,
-        expiresAt: user.expires_at,
-        tokenType: user.token_type || 'Bearer',
-        timestamp: Date.now()
+        accessToken: session.getAccessToken().getJwtToken(),
+        idToken: session.getIdToken().getJwtToken(),
+        refreshToken: session.getRefreshToken().getToken(),
+        expiresAt: session.getAccessToken().getExpiration() * 1000, // Convert to milliseconds
       };
       
+      this.tokens = tokens;
+      this.storeTokensForSubdomains(tokens);
+      
+      return tokens;
+    } catch (error) {
+      console.error('Get current session error:', error);
+      return null;
+    }
+  }
+
+  // Get current user information
+  async getCurrentUser() {
+    try {
+      const user = await Auth.currentAuthenticatedUser();
+      return {
+        username: user.username,
+        email: user.attributes?.email,
+        name: user.attributes?.name,
+        picture: user.attributes?.picture,
+        authMethod: this.determineAuthMethodFromUser(user),
+        attributes: user.attributes,
+      };
+    } catch (error) {
+      console.error('Get current user error:', error);
+      return null;
+    }
+  }
+
+  // Determine auth method from user attributes
+  determineAuthMethodFromUser(user) {
+    // Check if user came from external IDP based on user ID format
+    if (user.username?.includes('Auth0_')) {
+      return authMethods.EXTERNAL_IDP;
+    }
+    return authMethods.NATIVE_COGNITO;
+  }
+
+  // Store tokens for cross-subdomain sharing
+  storeTokensForSubdomains(tokens) {
+    try {
+      // Store in sessionStorage for current domain
+      sessionStorage.setItem(TokenManager.STORAGE_KEY, JSON.stringify(tokens));
+      
+      // Store in localStorage for cross-subdomain sharing
+      const tokenData = {
+        tokens,
+        timestamp: Date.now(),
+        authMethod: this.authMethod,
+      };
+      localStorage.setItem(TokenManager.TOKEN_DATA_KEY, JSON.stringify(tokenData));
+    } catch (error) {
+      console.error('Token storage error:', error);
+    }
+  }
+
+  // Retrieve tokens from storage
+  getStoredTokens() {
+    try {
+      // First try sessionStorage
+      const sessionTokens = sessionStorage.getItem(TokenManager.STORAGE_KEY);
+      if (sessionTokens) {
+        return JSON.parse(sessionTokens);
+      }
+
+      // Fallback to localStorage
+      const localTokenData = localStorage.getItem(TokenManager.TOKEN_DATA_KEY);
+      if (localTokenData) {
+        const data = JSON.parse(localTokenData);
+        // Check if tokens are still valid (not older than 1 hour)
+        if (Date.now() - data.timestamp < 3600000) {
+          return data.tokens;
+        } else {
+          // Clean up expired tokens
+          localStorage.removeItem(TokenManager.TOKEN_DATA_KEY);
+        }
+      }
+    } catch (error) {
+      console.error('Token retrieval error:', error);
+    }
+    return null;
+  }
+
+  // Legacy methods for backward compatibility
+  static storeTokens(user) {
+    const tokens = {
+      accessToken: user.access_token,
+      idToken: user.id_token,
+      refreshToken: user.refresh_token,
+      profile: user.profile,
+      expiresAt: user.expires_at,
+      tokenType: user.token_type || 'Bearer',
+      timestamp: Date.now()
+    };
+    
+    try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(tokens));
       console.log('Tokens stored successfully in localStorage');
       return true;
@@ -31,10 +207,6 @@ class TokenManager {
     }
   }
 
-  /**
-   * Retrieve stored tokens from local storage
-   * @returns {Object|null} Stored tokens or null
-   */
   static getTokens() {
     try {
       const tokens = localStorage.getItem(this.STORAGE_KEY);
@@ -45,13 +217,12 @@ class TokenManager {
     }
   }
 
-  /**
-   * Clear stored tokens from local storage
-   * @returns {boolean} Success status
-   */
   static clearTokens() {
     try {
       localStorage.removeItem(this.STORAGE_KEY);
+      localStorage.removeItem(this.TOKEN_DATA_KEY);
+      localStorage.removeItem(this.AUTH_METHOD_KEY);
+      sessionStorage.removeItem(this.STORAGE_KEY);
       console.log('Tokens cleared successfully from localStorage');
       return true;
     } catch (error) {
@@ -60,11 +231,49 @@ class TokenManager {
     }
   }
 
-  /**
-   * Validate if token is still valid (not expired)
-   * @param {string} token - JWT token to validate
-   * @returns {Promise<boolean>} Validation result
-   */
+  // Sign out
+  async signOut() {
+    try {
+      await Auth.signOut({ global: true });
+      
+      // Clear stored tokens
+      TokenManager.clearTokens();
+      
+      this.tokens = null;
+      this.authMethod = null;
+    } catch (error) {
+      console.error('Sign out error:', error);
+      throw error;
+    }
+  }
+
+  // Check if user is authenticated
+  async isAuthenticated() {
+    try {
+      await Auth.currentAuthenticatedUser();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Refresh tokens if needed
+  async refreshTokensIfNeeded() {
+    try {
+      const session = await Auth.currentSession();
+      if (session.isValid()) {
+        return await this.getCurrentSession();
+      } else {
+        // Try to refresh
+        const refreshedSession = await Auth.currentSession();
+        return await this.getCurrentSession();
+      }
+    } catch (error) {
+      console.error('Token refresh error:', error);
+      return null;
+    }
+  }
+
   static async validateToken(token) {
     try {
       if (!token) return false;
@@ -87,10 +296,6 @@ class TokenManager {
     }
   }
 
-  /**
-   * Check if stored tokens are valid
-   * @returns {Promise<boolean>} Validation result
-   */
   static async areStoredTokensValid() {
     const tokens = this.getTokens();
     if (!tokens || !tokens.accessToken) {
@@ -100,28 +305,16 @@ class TokenManager {
     return await this.validateToken(tokens.accessToken);
   }
 
-  /**
-   * Get user profile from stored tokens
-   * @returns {Object|null} User profile or null
-   */
   static getUserProfile() {
     const tokens = this.getTokens();
     return tokens?.profile || null;
   }
 
-  /**
-   * Get access token for API calls
-   * @returns {string|null} Access token or null
-   */
   static getAccessToken() {
     const tokens = this.getTokens();
     return tokens?.accessToken || null;
   }
 
-  /**
-   * Create authorization header for API calls
-   * @returns {Object} Authorization header object
-   */
   static getAuthHeaders() {
     const tokens = this.getTokens();
     console.log('TokenManager - getting auth headers');
@@ -142,6 +335,20 @@ class TokenManager {
       'Content-Type': 'application/json'
     };
   }
+
+  // Utility methods
+  extractRegionFromAuthority(authority) {
+    const match = authority.match(/cognito-idp\.([^.]+)\.amazonaws\.com/);
+    return match ? match[1] : 'us-east-1';
+  }
+
+  extractUserPoolIdFromAuthority(authority) {
+    const match = authority.match(/amazonaws\.com\/([^/]+)/);
+    return match ? match[1] : null;
+  }
 }
 
+// Export both instance and static class for backward compatibility
+const tokenManagerInstance = new TokenManager();
 export default TokenManager;
+export { tokenManagerInstance };

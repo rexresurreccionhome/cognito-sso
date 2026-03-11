@@ -22,15 +22,16 @@ USER JOURNEY STARTS HERE:
                               ▼                        │
                        ┌─────────────────┐             │
                        │ Store JWT tokens│◄────────────┘
-                       │ in sessionStorage│
+                       │ in localStorage │
                        └─────────────────┘
                               │
                               ▼
                     ┌─────────────────────┐
-                    │ SSO TOKEN SHARING   │
-                    │ Available to:       │
-                    │ • Admin Portal     │◄─── Other apps can now
-                    │ • Future Apps      │     auto-authenticate!
+                    │ CROSS-DOMAIN SSO    │
+                    │ URL redirect with:  │
+                    │ • ?access_token=... │◄─── Direct token passing
+                    │ • ?id_token=...     │     via URL parameters!
+                    │ • ?profile=...      │     (localStorage is domain-isolated)
                     └─────────────────────┘
 ```
 
@@ -46,21 +47,30 @@ USER JOURNEY STARTS HERE:
 - **API Integration Demo** - Shows how to make authenticated API calls
 - **Token Debugging** - Displays JWT tokens for developer understanding
 
-### ✅ **Cross-App Integration**
-- **Token Sharing** via sessionStorage for seamless SSO
-- **Redirect Handling** for users coming from other apps
-- **Universal Sign-Out** that clears tokens across all applications
-- **Role Display** showing user permissions and capabilities
+### ✅ **Cross-Domain Integration**
+- **URL Parameter Token Passing** - Tokens passed via redirect URLs to other domains
+- **localStorage Storage** - Within-domain token persistence (domain-isolated)
+- **Automatic Token Detection** - Apps parse tokens from incoming URL parameters
+- **URL History Cleanup** - Remove sensitive tokens from browser address bar
+- **Role-Based Access Control** - Admin portal validates user permissions
 
 ## 🔗 Connections to Other POC Components
 
 ### **→ Admin Portal Integration**
 ```javascript
 // When user clicks "Admin Portal" button:
-1. Main App provides the JWT tokens via sessionStorage
-2. Admin Portal reads tokens and validates user role
-3. If user has 'admin' role → Access granted
-4. If user is regular user → "Access Denied" message
+1. Main App constructs URL with tokens:
+   const params = new URLSearchParams();
+   params.set('access_token', userTokens.access_token);
+   params.set('id_token', userTokens.id_token);
+   params.set('profile', JSON.stringify(userTokens.profile));
+   const adminUrl = `${adminBaseUrl}?${params.toString()}`;
+
+2. Browser redirects to Admin Portal with tokens in URL
+3. Admin Portal reads tokens from URL parameters
+4. Admin Portal stores tokens in ITS OWN localStorage
+5. URL parameters cleaned from address bar for security
+6. Role validation determines access level
 ```
 
 ### **→ API Backend Integration**
@@ -92,13 +102,18 @@ USER JOURNEY STARTS HERE:
 6. Can navigate to other company apps seamlessly
 ```
 
-### **Scenario 2: Cross-App Navigation**
+### **Scenario 2: Cross-Domain Navigation**
 ```
-1. User authenticated in Main App
-2. Clicks "Admin Portal" link
-3. Admin Portal automatically authenticates (SSO!)
-4. No re-login required - seamless experience
-5. User switches between apps freely
+1. User authenticated in Main App (main.d3nnzt3f1swzid.amplifyapp.com)
+2. Clicks "Admin Portal" link → Redirects to different domain
+3. URL redirect: admin.domain.com?access_token=...&id_token=...
+4. Admin Portal (different domain) receives tokens via URL
+5. Admin Portal stores tokens in ITS localStorage
+6. URL cleaned: admin.domain.com (tokens removed from address bar)
+7. No re-login required - seamless cross-domain SSO!
+
+Note: localStorage is domain-isolated, so URL parameters are the
+cross-domain bridge!
 ```
 
 ### **Scenario 3: Session Management**
@@ -161,21 +176,28 @@ REACT_APP_ADMIN_APP_URL=http://localhost:3001
 - Shows user context and role
 - Provides sign-out functionality
 
-**`hooks/useSubdomainAuth.js`** - SSO magic implementation
-- Cross-domain token sharing
-- Automatic authentication detection
-- Session management across apps
+**`hooks/useSubdomainAuth.js`** - Authentication orchestration
+- OIDC authentication with AWS Cognito
+- Token validation and refresh handling
+- API request authentication
+- Session state management
 
-**`utils/tokenManager.js`** - Security foundation
-- JWT token storage and validation
-- Cross-app token sharing mechanism
+**`utils/tokenManager.js`** - Token storage (domain-specific)
+- JWT token storage in localStorage (within current domain only)
+- Token validation and expiration checking
 - Authentication state persistence
+- Token cleanup on sign-out
+
+**Cross-Domain Flow (Dashboard.js):**
+- `createAdminPortalUrl()` - Constructs redirect URL with tokens
+- URL parameters carry tokens across domain boundaries
+- Target domain parses URL and stores tokens locally
 
 ### **POC Success Criteria**
 - ✅ User can sign up/in via Cognito
-- ✅ Profile information displays correctly
-- ✅ Navigation to Admin Portal works
-- ✅ API calls authenticate properly
-- ✅ Tokens are shared across domains
-- ✅ Session persists across browser restarts
-- ✅ Sign-out clears all authentication
+- ✅ Profile information displays correctly  
+- ✅ Cross-domain navigation to Admin Portal works
+- ✅ API calls authenticate properly with JWT tokens
+- ✅ Tokens are shared across different domains via URL parameters
+- ✅ Sessions persist across browser restarts using localStorage
+- ✅ Sign-out clears all authentication across domains
