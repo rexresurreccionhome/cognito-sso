@@ -1,5 +1,5 @@
 import { Auth } from 'aws-amplify';
-import { cognitoConfig, featureFlags, authMethods } from '../config';
+import { cognitoConfig, cognitoDomain, featureFlags, authMethods } from '../config';
 
 /**
  * Enhanced Token Manager Utility - Admin Portal Version
@@ -24,7 +24,7 @@ class TokenManager {
         userPoolId: this.extractUserPoolIdFromAuthority(cognitoConfig.authority),
         userPoolWebClientId: cognitoConfig.client_id,
         oauth: {
-          domain: cognitoConfig.cognitoDomain?.replace('https://', ''),
+          domain: cognitoDomain.replace('https://', ''),
           scope: cognitoConfig.scope.split(' '),
           redirectSignIn: cognitoConfig.redirect_uri,
           redirectSignOut: cognitoConfig.post_logout_redirect_uri,
